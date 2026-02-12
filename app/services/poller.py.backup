@@ -1,0 +1,2050 @@
+﻿from __future__ import annotations
+
+import asyncio
+import json
+import math
+import random
+import re
+import uuid
+from collections import deque
+from dataclasses import dataclass, field
+from typing import Any, Callable, Deque, Dict, Optional, Tuple
+
+from ..core.logging import get_logger
+from ..core.paths import ROOT_DIR
+from ..core.time import now_ms
+from ..domain.config import ProjectConfig
+from ..domain.events import OrderEvent
+from ..exchanges.binance import BinanceSession
+from ..exchanges.okx import OKXSession
+from ..executors.base import Executor
+
+logger = get_logger()
+
+MIN_ORDER_WINDOW_MS = 120000
+MIN_POLL_INTERVAL_MS = 1000       # 优化：从1500降到1000
+POSITION_REFRESH_MS = 2000        # 优化：从3000降到2000
+POSITION_PAGE_SIZE = 5
+POSITION_HISTORY_LIMIT = 5
+FETCH_JITTER_MS = 50              # 优化：从100降到50
+ORDER_JITTER_MS = 0
+LOOP_JITTER_MS = 50               # 优化：从100降到50
+POSITION_CONFIRM_HITS = 2         # 需要连续2次确认仓位消失才触发平仓，防止误平仓
+POSITION_MISSING_CLOSE_HITS = 3   # 连续3次检测不到仓位时触发平仓（即使empty_confirmed=False）
+POSITION_CHANGE_REL_TOL = 0.01    # 1%容差，原0.2%过小
+POSITION_CHANGE_ABS_TOL = 1e-6
+API_ANOMALY_LOG = ROOT_DIR / "api_anomalies.jsonl"
+
+
+class DedupSet:
+    def __init__(self, maxlen: int = 2000) -> None:
+        self._maxlen = maxlen
+        self._queue: Deque[str] = deque()
+        self._set = set()
+
+    def add(self, key: str) -> bool:
+        if key in self._set:
+            return False
+        self._set.add(key)
+        self._queue.append(key)
+        if len(self._queue) > self._maxlen:
+            old = self._queue.popleft()
+            self._set.discard(old)
+        return True
+
+
+@dataclass
+class ProjectState:
+    last_order_time: int
+    last_detail_refresh: int = 0
+    leader_margin: float = 0.0
+    leader_aum: float = 0.0
+    follower_equity: float = 0.0
+    last_follower_equity_refresh: int = 0
+    dedup: DedupSet = field(default_factory=DedupSet)
+    positions: Dict[str, float] = field(default_factory=dict)
+    follower_positions: Dict[str, float] = field(default_factory=dict)
+    last_fetch_at: int = 0
+    last_fetch_ok: bool = False
+    last_fetch_error: str = ""
+    last_fetch_auth_error: bool = False
+    backoff_ms: int = 0
+    last_debug_log_at: int = 0
+    last_position_refresh: int = 0
+    last_positions_log_at: int = 0
+    positions_snapshot: list[Dict[str, object]] = field(default_factory=list)
+    positions_hash: str = ""
+    closed_positions_seen: Dict[str, int] = field(default_factory=dict)
+    # 仓位监控模式相关
+    leader_current_positions: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    position_show: bool = True
+    position_hidden_notified: bool = False
+    empty_positions_hits: int = 0
+    api_empty_notified: bool = False
+    position_signature_hits: Dict[str, int] = field(default_factory=dict)
+    position_signature: Dict[str, str] = field(default_factory=dict)
+    position_missing_hits: Dict[str, int] = field(default_factory=dict)
+    # 首次运行标志，防止首次检测到的仓位被当作新仓位
+    first_run: bool = True
+
+
+class PollerManager:
+    def __init__(
+        self,
+        leader: BinanceSession,
+        executor: Executor,
+        event_sink: Callable[[OrderEvent], None],
+    ) -> None:
+        self._leader = leader
+        self._executor = executor
+        self._event_sink = event_sink
+        self._tasks: Dict[str, asyncio.Task] = {}
+        self._states: Dict[str, ProjectState] = {}
+        self._okx_sessions: Dict[str, OKXSession] = {}  # OKX会话缓存
+
+    def running(self) -> Dict[str, bool]:
+        return {pid: not task.done() for pid, task in self._tasks.items()}
+
+    def fetch_health(self) -> Dict[str, Dict[str, object]]:
+        return {
+            pid: {
+                "ok": state.last_fetch_ok,
+                "ts": state.last_fetch_at,
+                "error": state.last_fetch_error,
+                "auth_error": state.last_fetch_auth_error,
+                "backoff_ms": state.backoff_ms,
+                "position_show": state.position_show,
+            }
+            for pid, state in self._states.items()
+        }
+
+    def list_positions(self) -> list[Dict[str, object]]:
+        results: list[Dict[str, object]] = []
+        for pid, state in self._states.items():
+            for item in state.positions_snapshot:
+                entry = dict(item)
+                entry["portfolio_id"] = pid
+                entry["snapshot_ts"] = state.last_position_refresh
+                results.append(entry)
+        return results
+
+    def list_current_positions(self) -> list[Dict[str, object]]:
+        """获取带单员当前持仓"""
+        results: list[Dict[str, object]] = []
+        for pid, state in self._states.items():
+            for key, pos in state.leader_current_positions.items():
+                if not isinstance(pos, dict):
+                    continue
+                symbol = str(pos.get("symbol") or "")
+                position_amt = float(pos.get("positionAmount") or 0)
+                if position_amt == 0:
+                    continue
+                entry_price = float(pos.get("entryPrice") or 0)
+                mark_price = float(pos.get("markPrice") or 0)
+                leverage = int(pos.get("leverage") or 1)
+                unrealized_pnl = float(pos.get("unrealizedProfit") or 0)
+                position_side = str(pos.get("positionSide") or "BOTH").upper()
+                side = "LONG" if position_amt > 0 else "SHORT"
+                results.append({
+                    "portfolio_id": pid,
+                    "symbol": symbol,
+                    "side": side,
+                    "position_side": position_side,
+                    "qty": abs(position_amt),
+                    "entry_price": entry_price,
+                    "mark_price": mark_price,
+                    "leverage": leverage,
+                    "unrealized_pnl": unrealized_pnl,
+                })
+        return results
+
+    def leader_equity(self, portfolio_id: str) -> float:
+        state = self._states.get(portfolio_id)
+        if not state:
+            return 0.0
+        return self._leader_equity(state)
+
+    def _spawn_task(self, coro: asyncio.Future, label: str, portfolio_id: str) -> None:
+        task = asyncio.create_task(coro)
+
+        def _done(fut: asyncio.Future) -> None:
+            try:
+                exc = fut.exception()
+            except asyncio.CancelledError:
+                return
+            if exc:
+                logger.warning(
+                    "%s failed portfolio=%s error=%s",
+                    label,
+                    portfolio_id,
+                    exc,
+                )
+
+        task.add_done_callback(_done)
+
+    def _leader_now_ms(self) -> int:
+        offset = getattr(self._leader, "time_offset_ms", 0)
+        try:
+            offset_ms = int(offset)
+        except (TypeError, ValueError):
+            offset_ms = 0
+        return now_ms() + offset_ms
+
+    async def start_project(self, project: ProjectConfig) -> None:
+        # 使用统一的项目ID (OKX用leader_id, Binance用portfolio_id)
+        project_id = project.leader_id if project.exchange == "okx" else project.portfolio_id
+        if not project_id:
+            logger.warning("Project has no valid ID, skipping")
+            return
+        if project_id in self._tasks:
+            return
+        bootstrap = now_ms() - max(project.order_window_ms, MIN_ORDER_WINDOW_MS)
+        self._states[project_id] = ProjectState(last_order_time=bootstrap)
+
+        # 根据交易所类型选择不同的运行逻辑
+        if project.exchange == "okx":
+            # 创建OKX会话
+            if project_id not in self._okx_sessions:
+                self._okx_sessions[project_id] = OKXSession()
+            task = asyncio.create_task(self._run_okx(project))
+        else:
+            task = asyncio.create_task(self._run(project))
+        self._tasks[project_id] = task
+
+    async def stop_project(self, portfolio_id: str) -> None:
+        task = self._tasks.pop(portfolio_id, None)
+        if task:
+            task.cancel()
+        self._states.pop(portfolio_id, None)
+
+    async def _refresh_detail(self, project: ProjectConfig, state: ProjectState) -> None:
+        now = now_ms()
+        refresh_ms = max(project.detail_refresh_ms, 30000)
+        if now - state.last_detail_refresh < refresh_ms:
+            return
+        detail = await self._leader.fetch_detail(project.portfolio_id)
+        data = detail.get("data") or {}
+        state.leader_margin = float(data.get("marginBalance") or 0.0)
+        state.leader_aum = float(data.get("aumAmount") or 0.0)
+        state.position_show = data.get("positionShow", True)
+        state.last_detail_refresh = now
+
+    async def _refresh_follower_equity(
+        self,
+        project: ProjectConfig,
+        state: ProjectState,
+    ) -> None:
+        now = now_ms()
+        refresh_ms = max(project.follower_equity_refresh_ms, 30000)
+        if (
+            state.last_follower_equity_refresh
+            and now - state.last_follower_equity_refresh < refresh_ms
+            and state.follower_equity > 0
+        ):
+            return
+        equity = await self._executor.get_follower_equity(project.trade_account_id or None)
+        if equity is not None and equity > 0:
+            allocated_pct = getattr(project, 'allocated_equity_pct', 100.0)
+            state.follower_equity = equity * (allocated_pct / 100.0)
+            state.last_follower_equity_refresh = now
+            return
+        state.follower_equity = project.follower_equity
+
+    def _position_fingerprint(self, items: list[Dict[str, object]]) -> str:
+        parts: list[str] = []
+        for item in items:
+            parts.append(
+                "|".join(
+                    [
+                        str(item.get("symbol") or ""),
+                        str(item.get("side") or ""),
+                        str(item.get("status") or ""),
+                        str(item.get("avg_cost") or ""),
+                        str(item.get("open_time") or ""),
+                        str(item.get("close_time") or ""),
+                        str(item.get("closed_volume") or ""),
+                        str(item.get("pnl") or ""),
+                        str(item.get("type") or ""),
+                    ]
+                )
+            )
+        return "||".join(parts)
+
+    def _record_api_anomaly(
+        self,
+        project: ProjectConfig,
+        message: str,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        payload = {
+            "ts": now_ms(),
+            "portfolio_id": project.portfolio_id,
+            "message": message,
+        }
+        if extra:
+            payload.update(extra)
+        try:
+            API_ANOMALY_LOG.parent.mkdir(parents=True, exist_ok=True)
+            with API_ANOMALY_LOG.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
+        except Exception as exc:
+            logger.warning("api anomaly log failed: %s", exc)
+
+    def _parse_position_items(self, payload: Dict[str, Any]) -> list[Dict[str, object]]:
+        raw_items = payload.get("data", {}).get("list") or []
+        items: list[Dict[str, object]] = []
+        for raw in raw_items:
+            if not isinstance(raw, dict):
+                continue
+            position_qty = self._extract_position_qty(raw)
+            items.append(
+                {
+                    "symbol": str(raw.get("symbol") or ""),
+                    "side": str(raw.get("side") or ""),
+                    "status": str(raw.get("status") or ""),
+                    "avg_cost": raw.get("avgCost"),
+                    "open_time": self._normalize_ts(int(raw.get("opened") or 0)),
+                    "close_time": self._normalize_ts(int(raw.get("closed") or 0)),
+                    "closed_volume": raw.get("closedVolume"),
+                    "pnl": raw.get("closingPnl"),
+                    "type": raw.get("type"),
+                    "update_time": self._normalize_ts(int(raw.get("updateTime") or 0)),
+                    "position_qty": position_qty,
+                }
+            )
+        items.sort(
+            key=lambda item: item.get("update_time")
+            or item.get("close_time")
+            or item.get("open_time")
+            or 0,
+            reverse=True,
+        )
+        return items[:POSITION_HISTORY_LIMIT]
+
+    def _normalize_history_side(self, value: object) -> str:
+        side = str(value or "").upper()
+        if side in {"LONG", "SHORT"}:
+            return side
+        if side == "BUY":
+            return "LONG"
+        if side == "SELL":
+            return "SHORT"
+        return ""
+
+    def _history_status(self, item: Dict[str, Any]) -> Optional[bool]:
+        status = str(item.get("status") or "").strip().lower()
+        if status:
+            if "open" in status:
+                return True
+            if "close" in status:
+                return False
+        close_time = int(item.get("close_time") or 0)
+        if close_time:
+            return False
+        closed_volume = item.get("closed_volume")
+        if closed_volume not in (None, "", 0, "0", "0.0"):
+            try:
+                if float(closed_volume) > 0:
+                    return False
+            except (TypeError, ValueError):
+                pass
+        return None
+
+    def _position_recency(self, item: Dict[str, Any]) -> int:
+        return int(item.get("update_time") or 0) or int(item.get("close_time") or 0) or int(
+            item.get("open_time") or 0
+        )
+
+    def _leader_open_sides(self, state: ProjectState, symbol: str) -> set[str]:
+        sides: set[str] = set()
+        if state.leader_current_positions:
+            for pos in state.leader_current_positions.values():
+                if str(pos.get("symbol") or "") != symbol:
+                    continue
+                side = str(pos.get("positionSide") or "").upper()
+                if side in {"LONG", "SHORT"}:
+                    sides.add(side)
+                    continue
+                amt = self._safe_float(pos.get("positionAmt"))
+                if amt > 0:
+                    sides.add("LONG")
+                elif amt < 0:
+                    sides.add("SHORT")
+        if sides:
+            return sides
+        for key, amt in state.positions.items():
+            if not amt or math.isclose(amt, 0.0):
+                continue
+            ksymbol, kside = key.split("|", 1)
+            if ksymbol != symbol:
+                continue
+            kside = kside.upper()
+            if kside in {"LONG", "SHORT"}:
+                sides.add(kside)
+        return sides
+
+    def _extract_position_qty(self, raw: Dict[str, Any]) -> Optional[float]:
+        for key in (
+            "positionAmt",
+            "positionAmount",
+            "positionQty",
+            "positionSize",
+            "openVolume",
+            "openedVolume",
+            "volume",
+            "qty",
+            "positionVolume",
+            "quantity",
+        ):
+            if key not in raw:
+                continue
+            try:
+                value = float(raw.get(key))
+            except (TypeError, ValueError):
+                continue
+            if value:
+                return value
+        return None
+
+    def _seed_positions_from_snapshot(self, state: ProjectState) -> None:
+        for item in state.positions_snapshot:
+            status = self._history_status(item)
+            if status is not True:
+                continue
+            symbol = str(item.get("symbol") or "")
+            if not symbol:
+                continue
+            position_side = self._normalize_history_side(item.get("side"))
+            if not position_side:
+                continue
+            qty = item.get("position_qty")
+            if qty is None:
+                continue
+            try:
+                qty_value = float(qty)
+            except (TypeError, ValueError):
+                continue
+            if math.isclose(qty_value, 0.0):
+                continue
+            key = self._position_key(symbol, position_side)
+            if position_side.upper() == "BOTH":
+                state.positions[key] = qty_value
+            else:
+                state.positions[key] = abs(qty_value)
+
+    def _infer_reduce_only(
+        self,
+        item: Dict[str, Any],
+        state: ProjectState,
+        symbol: str,
+        position_side: str,
+        side: str,
+    ) -> bool:
+        reduce_only = self._is_reduce_only(item, position_side, side)
+        if reduce_only:
+            return True
+        open_sides = self._leader_open_sides(state, symbol)
+        if len(open_sides) != 1:
+            return False
+        only = next(iter(open_sides))
+        side = side.upper()
+        if only == "LONG" and side == "SELL":
+            return True
+        if only == "SHORT" and side == "BUY":
+            return True
+        return False
+
+    def _infer_position_side(
+        self,
+        state: ProjectState,
+        symbol: str,
+        position_side: str,
+        side: str,
+        reduce_only: bool,
+    ) -> str:
+        raw = (position_side or "").upper()
+        if raw and raw != "BOTH":
+            return raw
+        open_sides = self._leader_open_sides(state, symbol)
+        if len(open_sides) == 1:
+            return next(iter(open_sides))
+        side = side.upper()
+        inferred = ""
+        if reduce_only:
+            if side == "SELL":
+                inferred = "LONG"
+            elif side == "BUY":
+                inferred = "SHORT"
+        else:
+            if side == "BUY":
+                inferred = "LONG"
+            elif side == "SELL":
+                inferred = "SHORT"
+        if inferred and (not open_sides or inferred in open_sides):
+            return inferred
+        return raw or "BOTH"
+
+    async def _reconcile_full_closes(
+        self,
+        project: ProjectConfig,
+        state: ProjectState,
+    ) -> None:
+        if not state.positions_snapshot:
+            return
+        latest: Dict[str, Tuple[int, Dict[str, object], str, str]] = {}
+        for item in state.positions_snapshot:
+            symbol = str(item.get("symbol") or "")
+            if not symbol:
+                continue
+            position_side = self._normalize_history_side(item.get("side"))
+            if not position_side:
+                continue
+            key = self._position_key(symbol, position_side)
+            recency = self._position_recency(item)
+            prev = latest.get(key)
+            if not prev or recency >= prev[0]:
+                latest[key] = (recency, item, symbol, position_side)
+
+        for key, (recency, item, symbol, position_side) in latest.items():
+            status = self._history_status(item)
+            if status is not False:
+                continue
+            marker = self._position_recency(item)
+            if marker <= 0:
+                marker = recency or now_ms()
+            last_marker = state.closed_positions_seen.get(key, 0)
+            if last_marker and marker <= last_marker:
+                continue
+            leader_amt = state.positions.get(key, 0.0)
+            if not leader_amt or math.isclose(leader_amt, 0.0):
+                state.closed_positions_seen[key] = marker
+                state.positions[key] = 0.0
+                state.follower_positions[key] = 0.0
+                continue
+            side = "SELL" if position_side.upper() == "LONG" else "BUY"
+            follower_before = state.follower_positions.get(key, 0.0)
+            fallback_qty = abs(follower_before) if abs(follower_before) > 0 else abs(
+                leader_amt
+            )
+            if fallback_qty <= 0:
+                state.closed_positions_seen[key] = marker
+                continue
+            follower_qty = -fallback_qty if side == "SELL" else fallback_qty
+            now = now_ms()
+            event = OrderEvent(
+                event_id=str(uuid.uuid4()),
+                portfolio_id=project.portfolio_id,
+                trade_account_id=project.trade_account_id or None,
+                order_id="",
+                trade_id="",
+                action="close",
+                symbol=symbol,
+                position_side=position_side,
+                side=side,
+                executed_qty=abs(leader_amt),
+                avg_price=0.0,
+                order_time=marker,
+                order_update_time=marker,
+                leader_delta=-abs(leader_amt),
+                scale=0.0,
+                follower_qty=follower_qty,
+                reduce_only=True,
+                order_value=0.0,
+                follower_notional=None,
+                leader_open_pct=None,
+                leader_close_pct=1.0,
+                follower_leverage=project.follower_leverage,
+                status="queued",
+                note="history_close_reconcile",
+                created_at=now,
+            )
+            self._event_sink(event)
+            if event.status == "queued":
+                await self._executor.execute(event)
+            state.positions[key] = 0.0
+            state.follower_positions[key] = 0.0
+            state.closed_positions_seen[key] = marker
+
+    async def _refresh_positions(self, project: ProjectConfig, state: ProjectState) -> None:
+        now = now_ms()
+        if now - state.last_position_refresh < POSITION_REFRESH_MS:
+            return
+        state.last_position_refresh = now
+        try:
+            use_dom = getattr(self._leader, "auth_mode", "") == "cdp"
+            if not use_dom:
+                self._record_api_anomaly(
+                    project,
+                    "dom_required; position history disabled",
+                    {"auth_mode": getattr(self._leader, "auth_mode", "")},
+                )
+                return
+            payload = await self._leader.fetch_position_history_from_page(
+                project.portfolio_id,
+                1,
+                POSITION_PAGE_SIZE,
+            )
+        except Exception as exc:
+            logger.warning(
+                "positions fetch error portfolio=%s error=%s",
+                project.portfolio_id,
+                exc,
+            )
+            return
+        ok, error, _ = self._evaluate_payload(payload)
+        if not ok:
+            if now - state.last_positions_log_at >= 15000:
+                state.last_positions_log_at = now
+                logger.warning(
+                    "positions fetch failed portfolio=%s error=%s debug=%s",
+                    project.portfolio_id,
+                    error,
+                    self._payload_debug(payload),
+                )
+            return
+        items = self._parse_position_items(payload)
+        fingerprint = self._position_fingerprint(items)
+        if fingerprint == state.positions_hash:
+            return
+        state.positions_snapshot = items
+        state.positions_hash = fingerprint
+        if now - state.last_positions_log_at >= 15000:
+            state.last_positions_log_at = now
+            sample = ", ".join(
+                f"{item.get('symbol')} {item.get('side')} {item.get('status')} open={item.get('open_time')} avg={item.get('avg_cost')}"
+                for item in items[:3]
+            )
+            logger.info(
+                "positions updated portfolio=%s count=%d sample=%s",
+                project.portfolio_id,
+                len(items),
+                sample or "-",
+            )
+
+    def _leader_equity(self, state: ProjectState) -> float:
+        if state.leader_margin > 0:
+            return state.leader_margin
+        return state.leader_aum
+
+    def _is_auth_error(self, message: str) -> bool:
+        if not message:
+            return False
+        value = message.lower()
+        tokens = (
+            "login",
+            "log in",
+            "not logged",
+            "unauthorized",
+            "auth",
+            "token",
+            "cookie",
+            "forbidden",
+            "session",
+            "expired",
+            "signature",
+        )
+        return any(token in value for token in tokens)
+
+    def _has_auth_hint(self) -> bool:
+        if not hasattr(self._leader, "header_status"):
+            return False
+        try:
+            status = self._leader.header_status()
+        except Exception:
+            return False
+        if not isinstance(status, dict):
+            return False
+        keys = (
+            "has_fvideo_token",
+            "has_fvideo_id",
+            "has_device_info",
+            "has_bnc_uuid",
+            "has_bnc_level",
+            "has_csrftoken",
+            "has_waf_cookie",
+        )
+        return any(status.get(key) for key in keys)
+
+    def _is_transient_error(self, message: str) -> bool:
+        if not message:
+            return False
+        value = message.lower()
+        tokens = (
+            "busy",
+            "system busy",
+            "11012005",
+            "too many",
+            "rate limit",
+            "temporarily",
+            "timeout",
+            "timed out",
+            "connection reset",
+            "bad gateway",
+            "gateway timeout",
+            "service unavailable",
+            "502",
+            "503",
+            "504",
+        )
+        return any(token in value for token in tokens)
+
+    def _next_backoff_ms(self, current: int, transient: bool, ok: bool) -> int:
+        if ok:
+            return 0  # 优化：成功立即清零
+        if not transient:
+            return 0
+        if current <= 0:
+            return 1000  # 优化：从3000降到1000
+        return min(int(current * 1.5), 15000)  # 优化：最大从60秒降到15秒
+
+    def _evaluate_payload(self, payload: Any) -> Tuple[bool, str, bool]:
+        if not isinstance(payload, dict):
+            return False, "invalid response", False
+        message = (
+            str(payload.get("message") or payload.get("msg") or payload.get("error") or "")
+        ).strip()
+        success = payload.get("success")
+        code = payload.get("code")
+        if success is False:
+            if code is not None:
+                code_value = str(code)
+                detail = f"{code_value} {message}".strip()
+                return False, detail or "success=false", self._is_auth_error(message)
+            return False, message or "success=false", self._is_auth_error(message)
+        if code is not None:
+            code_value = str(code)
+            if code_value not in {"0", "000000", "success", "SUCCESS"}:
+                detail = f"{code_value} {message}".strip()
+                return False, detail or "error code", self._is_auth_error(message)
+        if "data" not in payload:
+            return False, message or "missing data", self._is_auth_error(message)
+        return True, "", False
+
+    def _payload_debug(self, payload: Any) -> Dict[str, object]:
+        if not isinstance(payload, dict):
+            return {"type": type(payload).__name__}
+        message = payload.get("message") or payload.get("msg") or payload.get("error")
+        detail = payload.get("messageDetail")
+        data = payload.get("data")
+        data_keys = list(data.keys()) if isinstance(data, dict) else None
+        return {
+            "code": payload.get("code"),
+            "success": payload.get("success"),
+            "message": message,
+            "detail": detail,
+            "data_keys": data_keys,
+        }
+
+    def _update_fetch_status(
+        self,
+        state: ProjectState,
+        ok: bool,
+        error: str,
+        auth_error: bool,
+    ) -> None:
+        state.last_fetch_ok = ok
+        state.last_fetch_error = error
+        state.last_fetch_auth_error = auth_error
+        state.last_fetch_at = now_ms()
+
+    def _order_delta(self, position_side: str, side: str, qty: float) -> float:
+        position_side = position_side.upper()
+        side = side.upper()
+        if position_side == "LONG":
+            return qty if side == "BUY" else -qty
+        if position_side == "SHORT":
+            return qty if side == "SELL" else -qty
+        if position_side == "BOTH":
+            return qty if side == "BUY" else -qty
+        return 0.0
+
+    def _position_key(self, symbol: str, position_side: str) -> str:
+        key = position_side.upper() if position_side else "BOTH"
+        return f"{symbol}|{key}"
+
+    def _action_label(
+        self,
+        before: float,
+        after: float,
+        position_side: str,
+        delta: float,
+    ) -> str:
+        if not delta:
+            return ""
+        side = position_side.upper()
+        if side == "BOTH":
+            if before == 0:
+                return "open"
+            if before * delta > 0:
+                return "add"
+            if before * after <= 0:
+                return "close"
+            return "reduce"
+        if after > before:
+            return "open" if before <= 0 else "add"
+        if after < before:
+            return "close" if after <= 0 else "reduce"
+        return ""
+
+    def _apply_position_delta(
+        self,
+        before: float,
+        delta: float,
+        position_side: str,
+    ) -> float:
+        after = before + delta
+        side = position_side.upper()
+        if side == "BOTH":
+            if before and before * after < 0:
+                return 0.0
+            if abs(after) < 1e-12:
+                return 0.0
+            return after
+        return max(after, 0.0)
+
+    def _ratio_follower_qty(
+        self,
+        project: ProjectConfig,
+        state: ProjectState,
+        symbol: str,
+        position_side: str,
+        leader_delta: float,
+        order_value: float,
+        avg_price: float,
+        leader_before: float,
+        follower_before: float,
+    ) -> Tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
+        if order_value <= 0 or avg_price <= 0:
+            return None, None, None, None
+        scale_value = project.scale_value if project.scale_value > 0 else 1.0
+        side = position_side.upper()
+        is_reduce = False
+        if leader_before and leader_delta:
+            if side == "BOTH":
+                is_reduce = leader_before * leader_delta < 0
+            else:
+                is_reduce = leader_delta < 0
+
+        if is_reduce:
+            leader_abs = abs(leader_before)
+            if leader_abs <= 0:
+                return None, None, None, None
+            leader_notional = leader_abs * avg_price
+            if leader_notional <= 0:
+                return None, None, None, None
+            close_pct = min(abs(leader_delta) / leader_abs, 1.0)
+            follower_qty = -abs(follower_before * close_pct)
+            follower_qty = math.copysign(abs(follower_qty), -leader_before)
+            follower_notional = abs(follower_before * avg_price * close_pct)
+            return follower_qty, None, close_pct, follower_notional
+
+        if project.scale_mode == "fixed":
+            follower_notional = order_value * scale_value
+            qty = abs(follower_notional / avg_price)
+            direction = 1.0 if leader_delta >= 0 else -1.0
+            return direction * qty, None, None, follower_notional
+        if project.scale_mode == "leader_margin":
+            if project.leader_leverage <= 0 or project.follower_leverage <= 0:
+                return None, None, None, None
+            leader_equity = self._leader_equity(state)
+            follower_equity = (
+                state.follower_equity
+                if state.follower_equity > 0
+                else project.follower_equity
+            )
+            if leader_equity <= 0 or follower_equity <= 0:
+                return None, None, None, None
+            follower_margin = (order_value / project.leader_leverage) * (
+                follower_equity / leader_equity
+            )
+            if follower_margin <= 0:
+                return None, None, None, None
+            follower_notional = follower_margin * project.follower_leverage * scale_value
+            if follower_notional <= 0:
+                return None, None, None, None
+            qty = abs(follower_notional / avg_price)
+            direction = 1.0 if leader_delta >= 0 else -1.0
+            return direction * qty, None, None, follower_notional
+        leader_equity = self._leader_equity(state)
+        follower_equity = state.follower_equity if state.follower_equity > 0 else project.follower_equity
+        if (
+            leader_equity <= 0
+            or follower_equity <= 0
+            or project.leader_leverage <= 0
+            or project.follower_leverage <= 0
+        ):
+            return None, None, None, None
+
+        open_pct = order_value / (leader_equity * project.leader_leverage)
+        if open_pct <= 0:
+            return None, None, None, None
+        open_pct = min(open_pct, 1.0)
+        follower_notional = follower_equity * project.follower_leverage * open_pct * scale_value
+        if follower_notional <= 0:
+            return None, None, None, None
+        follower_qty = abs(follower_notional / avg_price)
+        direction = 1.0 if leader_delta >= 0 else -1.0
+        return direction * follower_qty, open_pct, None, follower_notional
+
+    def _get_str(self, item: Dict[str, Any], keys: tuple[str, ...]) -> str:
+        for key in keys:
+            value = item.get(key)
+            if value is None:
+                continue
+            return str(value)
+        return ""
+
+    def _get_int(self, item: Dict[str, Any], keys: tuple[str, ...]) -> int:
+        for key in keys:
+            value = item.get(key)
+            if value is None:
+                continue
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                continue
+        return 0
+
+    def _normalize_ts(self, value: int) -> int:
+        if value and value < 10_000_000_000:
+            return value * 1000
+        return value
+
+    def _get_ts(self, item: Dict[str, Any], keys: tuple[str, ...]) -> int:
+        value = self._get_int(item, keys)
+        return self._normalize_ts(value)
+
+    def _get_float(self, item: Dict[str, Any], keys: tuple[str, ...]) -> float:
+        for key in keys:
+            value = item.get(key)
+            if value is None:
+                continue
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                continue
+        return 0.0
+
+    def _safe_float(self, value: object) -> float:
+        if value is None:
+            return 0.0
+        if isinstance(value, bool):
+            return float(int(value))
+        if isinstance(value, (int, float)):
+            return float(value)
+        text = str(value).replace(",", "").strip()
+        if not text:
+            return 0.0
+        try:
+            return float(text)
+        except ValueError:
+            match = re.search(r"-?\d+(?:\.\d+)?", text)
+            if match:
+                try:
+                    return float(match.group(0))
+                except ValueError:
+                    return 0.0
+        return 0.0
+
+    def _safe_int(self, value: object, default: int = 0) -> int:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        text = str(value).strip().lower().replace("x", "")
+        if not text:
+            return default
+        try:
+            return int(float(text))
+        except ValueError:
+            return default
+
+    def _position_signature(self, pos: Dict[str, Any]) -> str:
+        symbol = str(pos.get("symbol") or "").upper()
+        side = str(pos.get("positionSide") or "BOTH").upper()
+        position_amt = self._safe_float(pos.get("positionAmt"))
+        entry_price = self._safe_float(pos.get("entryPrice"))
+        leverage = self._safe_float(pos.get("leverage"))
+        return f"{symbol}|{side}|{position_amt:.8f}|{entry_price:.6f}|{leverage:.2f}"
+
+    def _is_reduce_only(self, item: Dict[str, Any], position_side: str, side: str) -> bool:
+        flag = item.get("reduceOnly")
+        if isinstance(flag, bool):
+            return flag
+        if isinstance(flag, str):
+            return flag.lower() in {"true", "1"}
+        position_side = position_side.upper()
+        side = side.upper()
+        if position_side == "LONG" and side == "SELL":
+            return True
+        if position_side == "SHORT" and side == "BUY":
+            return True
+        return False
+
+    def _normalize_position_side(self, position_side: str, position_amt: float) -> str:
+        side = (position_side or "").upper()
+        if side in {"LONG", "SHORT"}:
+            return side
+        if position_amt > 0:
+            return "LONG"
+        if position_amt < 0:
+            return "SHORT"
+        return "BOTH"
+
+    def _extract_positions_data(self, payload: Dict[str, Any]) -> list[Dict[str, Any]]:
+        data = payload.get("data")
+        if isinstance(data, dict):
+            items = data.get("positions") or data.get("list") or data.get("data") or []
+        elif isinstance(data, list):
+            items = data
+        else:
+            items = []
+        return [item for item in items if isinstance(item, dict)]
+
+    def _normalize_position_item(
+        self,
+        raw: Dict[str, Any],
+        default_leverage: float,
+        require_side: bool,
+    ) -> Optional[Dict[str, Any]]:
+        symbol = str(raw.get("symbol") or "").strip()
+        if not symbol:
+            return None
+        raw_side = str(
+            raw.get("positionSide")
+            or raw.get("side")
+            or raw.get("direction")
+            or ""
+        ).upper()
+        if raw_side == "BUY":
+            raw_side = "LONG"
+        elif raw_side == "SELL":
+            raw_side = "SHORT"
+        position_amt = self._safe_float(raw.get("positionAmt"))
+        if math.isclose(position_amt, 0.0):
+            position_amt = self._safe_float(
+                raw.get("positionAmount")
+                or raw.get("positionQty")
+                or raw.get("positionSize")
+                or raw.get("qty")
+                or raw.get("quantity")
+            )
+        if require_side and raw_side not in {"LONG", "SHORT", "BOTH"} and math.isclose(
+            position_amt, 0.0
+        ):
+            return None
+        if raw_side == "SHORT" and position_amt > 0:
+            position_amt = -abs(position_amt)
+        elif raw_side == "LONG" and position_amt < 0:
+            position_amt = abs(position_amt)
+        position_side = self._normalize_position_side(raw_side, position_amt)
+        if math.isclose(position_amt, 0.0):
+            return None
+        entry_price = self._safe_float(
+            raw.get("entryPrice")
+            or raw.get("avgEntryPrice")
+            or raw.get("avgCost")
+            or raw.get("openPrice")
+            or raw.get("avgPrice")
+        )
+        mark_price = self._safe_float(
+            raw.get("markPrice")
+            or raw.get("lastPrice")
+            or raw.get("price")
+        )
+        pnl = self._safe_float(raw.get("unrealizedProfit") or raw.get("pnl"))
+        margin = self._safe_float(raw.get("margin") or raw.get("positionMargin"))
+        leverage = self._safe_int(raw.get("leverage"), default=int(default_leverage or 1))
+        return {
+            "symbol": symbol,
+            "positionSide": position_side,
+            "positionAmt": position_amt,
+            "positionAmount": abs(position_amt),
+            "entryPrice": entry_price,
+            "markPrice": mark_price,
+            "unrealizedProfit": pnl,
+            "margin": margin,
+            "leverage": leverage,
+        }
+
+    async def _run_position_monitor(self, project: ProjectConfig, state: ProjectState) -> None:
+        """仓位监控模式的主循环"""
+        leader_now = self._leader_now_ms()
+
+        raw_positions: list[Dict[str, Any]] = []
+        ok = False
+        error = ""
+        auth_error = False
+        require_side = False
+
+        # 直接使用 DOM 抓取（Playwright 浏览器），带重试机制
+        max_retries = 2
+        payload = None
+        for attempt in range(max_retries + 1):
+            logger.info("[FETCH] Starting fetch for portfolio %s (attempt %d/%d)",
+                       project.portfolio_id, attempt + 1, max_retries + 1)
+            payload = await self._leader.fetch_positions_from_page(project.portfolio_id)
+
+            if payload.get("success"):
+                logger.info("[FETCH] Success: positions=%d, position_show=%s, empty_confirmed=%s",
+                           len(payload.get("positions") or []),
+                           payload.get("position_show"),
+                           payload.get("empty_confirmed"))
+                # 调试：输出页面文本样本和关键词检测结果
+                if len(payload.get("positions") or []) == 0:
+                    logger.warning("[FETCH] DEBUG: has_usdt=%s, has_perpetual=%s, has_leverage=%s, text_len=%s, body_exists=%s, html_len=%s",
+                                  payload.get("_debug_has_usdt"),
+                                  payload.get("_debug_has_perpetual"),
+                                  payload.get("_debug_has_leverage"),
+                                  payload.get("_debug_text_length"),
+                                  payload.get("_debug_body_exists"),
+                                  payload.get("_debug_html_length"))
+                    debug_text = payload.get("_debug_text_sample", "")
+                    if debug_text:
+                        logger.warning("[FETCH] DEBUG page text: %s", debug_text[:2000])
+                break
+
+            # 失败时记录详细信息
+            logger.warning(
+                "[FETCH] Failed (attempt %d/%d): error=%s, position_show=%s, payload=%s",
+                attempt + 1, max_retries + 1,
+                payload.get("error"),
+                payload.get("position_show"),
+                str(payload)[:800]
+            )
+
+            if attempt < max_retries:
+                await asyncio.sleep(1)  # 等待 1 秒后重试
+
+        ok = bool(payload.get("success"))
+        error = str(payload.get("error") or "")
+        auth_error = self._is_auth_error(error)
+        raw_positions = payload.get("positions") if ok else []
+        if not raw_positions:
+            raw_positions = []
+        require_side = ok
+        # 是否明确确认了空仓位（页面显示"暂无持仓"等）
+        empty_confirmed = bool(payload.get("empty_confirmed", False))
+        payload_show = payload.get("position_show")
+        # 处理 DOM 抓取返回的 leaderMargin
+        leader_margin_from_dom = payload.get("leaderMargin")
+        if leader_margin_from_dom and float(leader_margin_from_dom) > 0:
+            state.leader_margin = float(leader_margin_from_dom)
+        if isinstance(payload_show, bool):
+            state.position_show = payload_show
+        elif isinstance(payload_show, (int, float)):
+            state.position_show = bool(payload_show)
+        elif isinstance(payload_show, str):
+            value = payload_show.strip().lower()
+            if value in {"true", "1", "yes"}:
+                state.position_show = True
+            elif value in {"false", "0", "no"}:
+                state.position_show = False
+        if ok and raw_positions:
+            error = ""
+            auth_error = False
+            state.position_show = True
+        if error == "login_required" and self._has_auth_hint():
+            error = "position_unavailable"
+            auth_error = False
+
+        if state.position_show is False:
+            error_msg = error or "position_hidden"
+            self._update_fetch_status(state, False, error_msg, auth_error)
+            if not state.position_hidden_notified:
+                state.position_hidden_notified = True
+                event = OrderEvent(
+                    event_id=str(uuid.uuid4()),
+                    portfolio_id=project.portfolio_id,
+                    trade_account_id=project.trade_account_id or None,
+                    order_id="", trade_id="", action="error",
+                    symbol="", position_side="", side="",
+                    executed_qty=0.0, avg_price=0.0,
+                    order_time=0, order_update_time=0,
+                    leader_delta=0.0, scale=0.0, follower_qty=0.0,
+                    reduce_only=False, order_value=0.0,
+                    follower_leverage=project.follower_leverage,
+                    status="error", note="position hidden; join copy-trade first",
+                    created_at=leader_now,
+                )
+                self._event_sink(event)
+            return
+
+        self._update_fetch_status(state, ok, error, auth_error)
+        if not ok:
+            return
+
+        state.position_hidden_notified = False
+
+        positions_data: list[Dict[str, Any]] = []
+        for pos in raw_positions:
+            if not isinstance(pos, dict):
+                continue
+            normalized = self._normalize_position_item(
+                pos,
+                project.leader_leverage,
+                require_side=require_side,
+            )
+            if normalized:
+                positions_data.append(normalized)
+
+        margin_total = 0.0
+        for pos in positions_data:
+            margin_value = self._safe_float(pos.get("margin"))
+            if margin_value > 0:
+                margin_total += margin_value
+        # 注意：不要用仓位保证金总和覆盖 leader_margin
+        # leader_margin 应该是带单员的账户总保证金，由 _refresh_detail 获取
+
+        new_positions: Dict[str, Dict[str, Any]] = {}
+
+        for pos in positions_data:
+            if not isinstance(pos, dict):
+                continue
+            symbol = str(pos.get("symbol") or "")
+            position_side = str(pos.get("positionSide") or "BOTH").upper()
+            if not symbol:
+                continue
+            key = self._position_key(symbol, position_side)
+            new_positions[key] = pos
+
+        confirmed_positions: Dict[str, Dict[str, Any]] = {}
+
+        for key, pos in new_positions.items():
+            signature = self._position_signature(pos)
+            previous = state.position_signature.get(key)
+            if previous == signature:
+                hits = state.position_signature_hits.get(key, 0) + 1
+            else:
+                hits = 1
+                state.position_signature[key] = signature
+            state.position_signature_hits[key] = hits
+            state.position_missing_hits[key] = 0
+            if hits >= POSITION_CONFIRM_HITS:
+                confirmed_positions[key] = pos
+            elif key in state.leader_current_positions:
+                confirmed_positions[key] = state.leader_current_positions[key]
+
+        for key in list(state.leader_current_positions.keys()):
+            if key in new_positions:
+                continue
+            miss_hits = state.position_missing_hits.get(key, 0) + 1
+            state.position_missing_hits[key] = miss_hits
+            # 只有明确确认空仓位时才允许移除仓位，否则保留
+            if miss_hits < POSITION_CONFIRM_HITS or not empty_confirmed:
+                confirmed_positions[key] = state.leader_current_positions[key]
+            else:
+                state.position_signature.pop(key, None)
+                state.position_signature_hits.pop(key, None)
+                state.position_missing_hits.pop(key, None)
+
+        if not new_positions and state.leader_current_positions:
+            state.empty_positions_hits += 1
+            if state.empty_positions_hits < POSITION_CONFIRM_HITS:
+                return
+        else:
+            state.empty_positions_hits = 0
+
+        # 对比仓位变化，只有明确确认空仓位时才允许平仓
+        await self._process_position_changes(project, state, confirmed_positions, leader_now, empty_confirmed)
+
+        state.leader_current_positions = confirmed_positions
+
+        # 同步更新 positions_snapshot 供前端显示
+        snapshot_items: list[Dict[str, object]] = []
+        for pos in positions_data:
+            if not isinstance(pos, dict):
+                continue
+            symbol = str(pos.get("symbol") or "")
+            if not symbol:
+                continue
+            position_side = str(pos.get("positionSide") or "BOTH").upper()
+            position_amt = self._safe_float(pos.get("positionAmt"))
+            entry_price = self._safe_float(pos.get("entryPrice"))
+            side = "LONG" if position_amt > 0 else "SHORT" if position_amt < 0 else position_side
+            snapshot_items.append({
+                "symbol": symbol,
+                "side": side,
+                "status": "ACTIVE" if position_amt != 0 else "CLOSED",
+                "avg_cost": entry_price,
+                "open_time": now_ms(),
+                "close_time": 0,
+                "position_qty": abs(position_amt),
+            })
+        # 注意：不更新 positions_snapshot，让 _refresh_positions 来更新历史持仓
+
+    async def _process_position_changes(
+        self,
+        project: ProjectConfig,
+        state: ProjectState,
+        new_positions: Dict[str, Dict[str, Any]],
+        leader_now: int,
+        empty_confirmed: bool = False,
+    ) -> None:
+        """处理仓位变化
+
+        Args:
+            empty_confirmed: 是否明确确认了空仓位（页面显示"暂无持仓"等），
+                            只有为True时才允许触发平仓操作
+        """
+        old_positions = state.leader_current_positions
+
+        # 首次运行时，同步已有仓位
+        if state.first_run:
+            if new_positions:
+                logger.info("first run: syncing existing positions, count=%d", len(new_positions))
+                state.first_run = False
+                for key, pos in new_positions.items():
+                    await self._handle_first_run_sync(project, state, pos, leader_now)
+            state.leader_current_positions = new_positions
+            return
+
+        # 检测新开仓位
+        for key, pos in new_positions.items():
+            if key not in old_positions:
+                await self._handle_position_open(project, state, pos, leader_now)
+            else:
+                old_pos = old_positions[key]
+                await self._handle_position_change(project, state, old_pos, pos, leader_now)
+
+        # 检测平仓 - 连续多次检测不到仓位或明确确认空仓位时触发
+        for key, old_pos in old_positions.items():
+            if key not in new_positions:
+                miss_count = state.position_missing_hits.get(key, 0)
+                # 连续N次检测不到仓位，或明确确认空仓位，触发平仓
+                if empty_confirmed or miss_count >= POSITION_MISSING_CLOSE_HITS:
+                    await self._handle_position_close(project, state, old_pos, leader_now)
+                else:
+                    logger.warning(
+                        "position missing (hit=%d/%d), waiting for confirmation: symbol=%s",
+                        miss_count, POSITION_MISSING_CLOSE_HITS, old_pos.get("symbol"),
+                    )
+
+    async def _handle_first_run_sync(
+        self,
+        project: ProjectConfig,
+        state: ProjectState,
+        pos: Dict[str, Any],
+        leader_now: int,
+    ) -> None:
+        """首次运行时同步已有仓位"""
+        symbol = str(pos.get("symbol") or "")
+        position_side = str(pos.get("positionSide") or "BOTH").upper()
+        leader_amt = abs(float(pos.get("positionAmt") or 0))
+        entry_price = float(pos.get("entryPrice") or 0)
+        leverage = float(pos.get("leverage") or project.leader_leverage)
+
+        if leader_amt <= 0 or entry_price <= 0:
+            return
+
+        key = self._position_key(symbol, position_side)
+
+        # 获取跟随者实际仓位
+        actual_qty = await self._get_follower_actual_position(project, symbol, position_side)
+
+        # 计算目标仓位
+        target_qty, target_notional = self._calc_margin_ratio_qty(
+            project, state, leader_amt, entry_price, leverage
+        )
+
+        if target_qty is None:
+            logger.warning("first_run_sync: cannot calculate target qty for %s", symbol)
+            state.positions[key] = leader_amt
+            state.follower_positions[key] = actual_qty
+            return
+
+        # 计算差值
+        diff = target_qty - actual_qty
+
+        if math.isclose(diff, 0.0, rel_tol=0.05, abs_tol=1e-6):
+            # 差值小于5%，无需操作
+            logger.info("first_run_sync: %s already synced (target=%.6f, actual=%.6f)",
+                        symbol, target_qty, actual_qty)
+            state.positions[key] = leader_amt
+            state.follower_positions[key] = actual_qty
+            return
+
+        logger.info("first_run_sync: %s needs sync (target=%.6f, actual=%.6f, diff=%.6f)",
+                    symbol, target_qty, actual_qty, diff)
+
+        # 需要同步
+        if diff > 0:
+            # 需要开仓/加仓
+            side = "BUY" if position_side in ("LONG", "BOTH") else "SELL"
+            action = "open" if actual_qty == 0 else "add"
+            follower_qty = diff
+        else:
+            # 需要减仓
+            side = "SELL" if position_side in ("LONG", "BOTH") else "BUY"
+            action = "reduce"
+            follower_qty = abs(diff)
+
+        state.positions[key] = leader_amt
+        state.follower_positions[key] = target_qty
+
+        event = self._create_position_event(
+            project, symbol, position_side, side, leader_amt,
+            entry_price, follower_qty, follower_qty * entry_price,
+            action, action == "reduce", leader_now
+        )
+        self._event_sink(event)
+
+        if event.status == "queued":
+            await self._executor.execute(event)
+
+    async def _handle_position_open(
+        self,
+        project: ProjectConfig,
+        state: ProjectState,
+        pos: Dict[str, Any],
+        leader_now: int,
+    ) -> None:
+        """处理新开仓"""
+        symbol = str(pos.get("symbol") or "")
+        position_side = str(pos.get("positionSide") or "BOTH").upper()
+        position_amt = abs(float(pos.get("positionAmt") or 0))
+        entry_price = float(pos.get("entryPrice") or 0)
+        leverage = float(pos.get("leverage") or project.leader_leverage)
+
+        if position_amt <= 0 or entry_price <= 0:
+            return
+
+        # 计算跟随数量
+        follower_qty, follower_notional = self._calc_margin_ratio_qty(
+            project, state, position_amt, entry_price, leverage
+        )
+
+        if follower_qty is None or follower_qty <= 0:
+            return
+
+        side = "BUY" if position_side in ("LONG", "BOTH") else "SELL"
+        key = self._position_key(symbol, position_side)
+
+        # 更新状态
+        state.positions[key] = position_amt
+        state.follower_positions[key] = follower_qty
+
+        event = self._create_position_event(
+            project, symbol, position_side, side, position_amt,
+            entry_price, follower_qty, follower_notional,
+            "open", False, leader_now
+        )
+        self._event_sink(event)
+
+        if event.status == "queued":
+            await self._executor.execute(event)
+
+    async def _handle_position_change(
+        self,
+        project: ProjectConfig,
+        state: ProjectState,
+        old_pos: Dict[str, Any],
+        new_pos: Dict[str, Any],
+        leader_now: int,
+    ) -> None:
+        """处理仓位变化（加仓/减仓）- 始终保持与带单员比例一致"""
+        symbol = str(new_pos.get("symbol") or "")
+        position_side = str(new_pos.get("positionSide") or "BOTH").upper()
+        old_amt = abs(float(old_pos.get("positionAmt") or 0))
+        new_amt = abs(float(new_pos.get("positionAmt") or 0))
+        entry_price = float(new_pos.get("entryPrice") or 0)
+        leverage = float(new_pos.get("leverage") or project.leader_leverage)
+
+        if math.isclose(
+            new_amt,
+            old_amt,
+            rel_tol=POSITION_CHANGE_REL_TOL,
+            abs_tol=POSITION_CHANGE_ABS_TOL,
+        ):
+            return
+        if entry_price <= 0:
+            return
+
+        key = self._position_key(symbol, position_side)
+
+        # 计算用户应该持有的目标仓位（基于带单员总仓位）
+        target_qty, target_notional = self._calc_margin_ratio_qty(
+            project, state, new_amt, entry_price, leverage
+        )
+        if target_qty is None:
+            return
+
+        # 获取用户实际仓位
+        actual_qty = await self._get_follower_actual_position(project, symbol, position_side)
+
+        # 计算差值
+        diff = target_qty - actual_qty
+        if math.isclose(diff, 0.0, rel_tol=0.02, abs_tol=1e-6):
+            # 差值小于2%，无需操作
+            logger.info(
+                "position sync: symbol=%s target=%.6f actual=%.6f diff=%.6f (within tolerance)",
+                symbol, target_qty, actual_qty, diff
+            )
+            state.positions[key] = new_amt
+            state.follower_positions[key] = actual_qty
+            return
+
+        logger.info(
+            "position sync: symbol=%s target=%.6f actual=%.6f diff=%.6f",
+            symbol, target_qty, actual_qty, diff
+        )
+
+        if diff > 0:
+            # 需要加仓
+            follower_qty = diff
+            follower_notional = follower_qty * entry_price
+            side = "BUY" if position_side in ("LONG", "BOTH") else "SELL"
+            action = "add"
+            reduce_only = False
+        else:
+            # 需要减仓
+            follower_qty = abs(diff)
+            follower_notional = follower_qty * entry_price
+            side = "SELL" if position_side in ("LONG", "BOTH") else "BUY"
+            action = "reduce"
+            reduce_only = True
+
+        # 更新状态
+        state.positions[key] = new_amt
+        state.follower_positions[key] = target_qty
+
+        event = self._create_position_event(
+            project, symbol, position_side, side, abs(new_amt - old_amt),
+            entry_price, follower_qty, follower_notional,
+            action, reduce_only, leader_now
+        )
+        self._event_sink(event)
+
+        if event.status == "queued":
+            await self._executor.execute(event)
+
+    async def _handle_position_close(
+        self,
+        project: ProjectConfig,
+        state: ProjectState,
+        old_pos: Dict[str, Any],
+        leader_now: int,
+    ) -> None:
+        """处理平仓 - 使用实际仓位"""
+        symbol = str(old_pos.get("symbol") or "")
+        position_side = str(old_pos.get("positionSide") or "BOTH").upper()
+        old_amt = abs(float(old_pos.get("positionAmt") or 0))
+        entry_price = float(old_pos.get("entryPrice") or 0)
+
+        if old_amt <= 0:
+            return
+
+        key = self._position_key(symbol, position_side)
+
+        # 获取用户实际仓位
+        actual_qty = await self._get_follower_actual_position(project, symbol, position_side)
+
+        if actual_qty <= 0:
+            logger.info("position close: symbol=%s no actual position to close", symbol)
+            state.positions[key] = 0.0
+            state.follower_positions[key] = 0.0
+            return
+
+        logger.info("position close: symbol=%s actual_qty=%.6f", symbol, actual_qty)
+
+        side = "SELL" if position_side in ("LONG", "BOTH") else "BUY"
+        follower_notional = actual_qty * entry_price if entry_price > 0 else 0
+
+        # 清空状态
+        state.positions[key] = 0.0
+        state.follower_positions[key] = 0.0
+
+        event = self._create_position_event(
+            project, symbol, position_side, side, old_amt,
+            entry_price, actual_qty, follower_notional,
+            "close", True, leader_now
+        )
+        self._event_sink(event)
+
+        if event.status == "queued":
+            await self._executor.execute(event)
+
+    async def _get_follower_actual_position(
+        self,
+        project: ProjectConfig,
+        symbol: str,
+        position_side: str,
+    ) -> float:
+        """获取用户实际持仓数量"""
+        try:
+            positions = await self._executor.get_follower_positions(
+                project.trade_account_id or None
+            )
+            for pos in positions:
+                pos_symbol = str(pos.get("symbol") or "")
+                pos_side = str(pos.get("positionSide") or "BOTH").upper()
+                if pos_symbol == symbol and pos_side == position_side:
+                    return abs(float(pos.get("positionAmt") or 0))
+            return 0.0
+        except Exception as e:
+            logger.warning("failed to get follower position: %s", e)
+            return 0.0
+
+    def _calc_margin_ratio_qty(
+        self,
+        project: ProjectConfig,
+        state: ProjectState,
+        leader_qty: float,
+        price: float,
+        leader_leverage: float,
+    ) -> Tuple[Optional[float], Optional[float]]:
+        """基于名义仓位比例计算跟随数量
+
+        公式: 跟随者名义仓位 = 带单员名义仓位 × (跟随者保证金/带单员保证金) × 倍数
+        不受杠杆影响，直接按名义价值比例跟随
+        """
+        if leader_qty <= 0 or price <= 0:
+            return None, None
+
+        leader_margin = state.leader_margin
+        follower_equity = state.follower_equity or project.follower_equity
+
+        if leader_margin <= 0 or follower_equity <= 0:
+            return None, None
+
+        # 计算带单员的名义仓位价值
+        leader_notional = leader_qty * price
+
+        # 计算资金比例
+        equity_ratio = follower_equity / leader_margin
+
+        # 计算跟随者的名义价值 = 带单员名义价值 × 资金比例 × 倍数
+        follower_notional = leader_notional * equity_ratio * project.scale_value
+
+        # 计算跟随者数量
+        follower_qty = follower_notional / price
+
+        return follower_qty, follower_notional
+
+    def _create_position_event(
+        self,
+        project: ProjectConfig,
+        symbol: str,
+        position_side: str,
+        side: str,
+        executed_qty: float,
+        avg_price: float,
+        follower_qty: float,
+        follower_notional: Optional[float],
+        action: str,
+        reduce_only: bool,
+        leader_now: int,
+    ) -> OrderEvent:
+        """创建仓位事件"""
+        status = "queued"
+        note = None
+
+        if math.isclose(follower_qty, 0.0):
+            status = "skipped"
+            note = "zero_qty"
+        if project.min_qty > 0 and abs(follower_qty) < project.min_qty:
+            status = "skipped"
+            note = "below_min_qty"
+        if project.max_qty > 0 and abs(follower_qty) > project.max_qty:
+            status = "skipped"
+            note = "above_max_qty"
+
+        return OrderEvent(
+            event_id=str(uuid.uuid4()),
+            portfolio_id=project.portfolio_id,
+            trade_account_id=project.trade_account_id or None,
+            order_id=str(uuid.uuid4())[:8],
+            trade_id="",
+            action=action,
+            symbol=symbol,
+            position_side=position_side,
+            side=side,
+            executed_qty=executed_qty,
+            avg_price=avg_price,
+            order_time=leader_now,
+            order_update_time=leader_now,
+            leader_delta=executed_qty if not reduce_only else -executed_qty,
+            scale=project.scale_value,
+            follower_qty=follower_qty,
+            reduce_only=reduce_only,
+            order_value=executed_qty * avg_price,
+            follower_notional=follower_notional,
+            follower_leverage=project.follower_leverage,
+            status=status,
+            note=note,
+            created_at=leader_now,
+        )
+
+    async def _run(self, project: ProjectConfig) -> None:
+        state = self._states[project.portfolio_id]
+        monitor_mode = project.monitor_mode
+        if monitor_mode != "position":
+            logger.warning(
+                "monitor_mode=%s not supported in dom-only mode; forcing position",
+                monitor_mode,
+            )
+            monitor_mode = "position"
+        while True:
+            loop_start = now_ms()
+            if not project.enabled:
+                await asyncio.sleep(0.2)
+                continue
+            try:
+                self._spawn_task(
+                    self._refresh_follower_equity(project, state),
+                    "equity refresh",
+                    project.portfolio_id,
+                )
+
+                if monitor_mode == "position":
+                    await self._run_position_monitor(project, state)
+                    await self._refresh_positions(project, state)
+            except Exception as exc:  # pragma: no cover - runtime errors
+                error = str(exc)
+                self._update_fetch_status(state, False, error, self._is_auth_error(error))
+                state.backoff_ms = self._next_backoff_ms(
+                    state.backoff_ms,
+                    transient=self._is_transient_error(error),
+                    ok=False,
+                )
+                event = OrderEvent(
+                    event_id=str(uuid.uuid4()),
+                    portfolio_id=project.portfolio_id,
+                    trade_account_id=project.trade_account_id or None,
+                    order_id="",
+                    trade_id="",
+                    action="error",
+                    symbol="",
+                    position_side="",
+                    side="",
+                    executed_qty=0.0,
+                    avg_price=0.0,
+                    order_time=0,
+                    order_update_time=0,
+                    leader_delta=0.0,
+                    scale=0.0,
+                    follower_qty=0.0,
+                    reduce_only=False,
+                    order_value=0.0,
+                    follower_notional=None,
+                    leader_open_pct=None,
+                    leader_close_pct=None,
+                    follower_leverage=project.follower_leverage,
+                    status="error",
+                    note=str(exc),
+                    created_at=now_ms(),
+                )
+                self._event_sink(event)
+
+            elapsed = now_ms() - loop_start
+            poll_interval_ms = max(project.poll_interval_ms, MIN_POLL_INTERVAL_MS)
+            jitter_ms = random.randint(0, LOOP_JITTER_MS)
+            sleep_ms = max(poll_interval_ms - elapsed, 0) + state.backoff_ms + jitter_ms
+            await asyncio.sleep(sleep_ms / 1000.0)
+
+    async def _run_okx(self, project: ProjectConfig) -> None:
+        """OKX交易所的仓位监控主循环"""
+        leader_id = project.leader_id
+        state = self._states[leader_id]
+        okx_session = self._okx_sessions[leader_id]
+
+        while True:
+            loop_start = now_ms()
+            if not project.enabled:
+                await asyncio.sleep(0.2)
+                continue
+
+            try:
+                # 刷新跟随者权益
+                self._spawn_task(
+                    self._refresh_follower_equity(project, state),
+                    "equity refresh",
+                    leader_id,
+                )
+
+                # 获取OKX交易员持仓
+                payload = await okx_session.fetch_positions(leader_id)
+                ok = payload.get("success", False)
+                error = payload.get("error", "")
+
+                self._update_fetch_status(state, ok, error, False)
+
+                if not ok:
+                    state.backoff_ms = self._next_backoff_ms(state.backoff_ms, transient=True, ok=False)
+                    continue
+
+                state.backoff_ms = self._next_backoff_ms(state.backoff_ms, transient=False, ok=True)
+
+                # 解析持仓数据
+                positions_data = payload.get("positions", [])
+                await self._process_okx_positions(project, state, positions_data)
+
+            except Exception as exc:
+                error = str(exc)
+                self._update_fetch_status(state, False, error, False)
+                state.backoff_ms = self._next_backoff_ms(state.backoff_ms, transient=True, ok=False)
+                logger.error("OKX poller error: %s", exc)
+
+            elapsed = now_ms() - loop_start
+            poll_interval_ms = max(project.poll_interval_ms, MIN_POLL_INTERVAL_MS)
+            jitter_ms = random.randint(0, LOOP_JITTER_MS)
+            sleep_ms = max(poll_interval_ms - elapsed, 0) + state.backoff_ms + jitter_ms
+            await asyncio.sleep(sleep_ms / 1000.0)
+
+    async def _process_okx_positions(
+        self,
+        project: ProjectConfig,
+        state: ProjectState,
+        positions: list[Dict[str, Any]],
+    ) -> None:
+        """处理OKX持仓变化"""
+        leader_id = project.leader_id
+        leader_now = now_ms()
+
+        # 构建当前持仓映射
+        current_positions: Dict[str, Dict[str, Any]] = {}
+        for pos in positions:
+            symbol = pos.get("symbol", "")
+            position_side = pos.get("positionSide", "BOTH")
+            key = self._position_key(symbol, position_side)
+            current_positions[key] = pos
+
+        # 检测新开仓
+        for key, pos in current_positions.items():
+            if key not in state.leader_current_positions:
+                # 新开仓
+                await self._handle_okx_position_open(project, state, pos, leader_now)
+
+        # 检测仓位变化和平仓
+        for key, old_pos in list(state.leader_current_positions.items()):
+            if key not in current_positions:
+                # 平仓
+                await self._handle_okx_position_close(project, state, old_pos, leader_now)
+            else:
+                # 检查仓位变化
+                new_pos = current_positions[key]
+                old_amt = abs(float(old_pos.get("positionAmount", 0)))
+                new_amt = abs(float(new_pos.get("positionAmount", 0)))
+                if not math.isclose(old_amt, new_amt, rel_tol=POSITION_CHANGE_REL_TOL):
+                    await self._handle_okx_position_change(project, state, old_pos, new_pos, leader_now)
+
+        # 更新状态
+        state.leader_current_positions = current_positions
+
+    async def _handle_okx_position_open(
+        self,
+        project: ProjectConfig,
+        state: ProjectState,
+        pos: Dict[str, Any],
+        leader_now: int,
+    ) -> None:
+        """处理OKX新开仓"""
+        symbol = pos.get("symbol", "")
+        position_side = pos.get("positionSide", "LONG")
+        position_amt = abs(float(pos.get("positionAmount", 0)))
+        entry_price = float(pos.get("entryPrice", 0))
+        leverage = int(pos.get("leverage", 10))
+
+        if position_amt <= 0 or entry_price <= 0:
+            return
+
+        side = "BUY" if position_side == "LONG" else "SELL"
+        order_value = position_amt * entry_price
+
+        # 计算跟单数量
+        follower_qty, follower_notional = self._calc_okx_follower_qty(
+            project, state, position_amt, entry_price, is_reduce=False
+        )
+
+        if follower_qty is None or follower_qty <= 0:
+            return
+
+        event = OrderEvent(
+            event_id=str(uuid.uuid4()),
+            portfolio_id=project.leader_id,
+            trade_account_id=project.trade_account_id or None,
+            order_id=str(uuid.uuid4())[:8],
+            trade_id="",
+            action="open",
+            symbol=symbol,
+            position_side=position_side,
+            side=side,
+            executed_qty=position_amt,
+            avg_price=entry_price,
+            order_time=leader_now,
+            order_update_time=leader_now,
+            leader_delta=position_amt,
+            scale=project.scale_value,
+            follower_qty=follower_qty,
+            reduce_only=False,
+            order_value=order_value,
+            follower_notional=follower_notional,
+            follower_leverage=project.follower_leverage or leverage,
+            status="queued",
+            note=None,
+            created_at=leader_now,
+        )
+
+        self._event_sink(event)
+        self._spawn_task(self._executor.execute(event), "execute", project.leader_id)
+
+    async def _handle_okx_position_close(
+        self,
+        project: ProjectConfig,
+        state: ProjectState,
+        pos: Dict[str, Any],
+        leader_now: int,
+    ) -> None:
+        """处理OKX平仓"""
+        symbol = pos.get("symbol", "")
+        position_side = pos.get("positionSide", "LONG")
+        position_amt = abs(float(pos.get("positionAmount", 0)))
+        entry_price = float(pos.get("entryPrice", 0))
+        mark_price = float(pos.get("markPrice", 0)) or entry_price
+
+        if position_amt <= 0:
+            return
+
+        side = "SELL" if position_side == "LONG" else "BUY"
+
+        # 获取跟随者当前持仓
+        key = self._position_key(symbol, position_side)
+        follower_amt = state.follower_positions.get(key, 0)
+
+        if follower_amt <= 0:
+            return
+
+        event = OrderEvent(
+            event_id=str(uuid.uuid4()),
+            portfolio_id=project.leader_id,
+            trade_account_id=project.trade_account_id or None,
+            order_id=str(uuid.uuid4())[:8],
+            trade_id="",
+            action="close",
+            symbol=symbol,
+            position_side=position_side,
+            side=side,
+            executed_qty=position_amt,
+            avg_price=mark_price,
+            order_time=leader_now,
+            order_update_time=leader_now,
+            leader_delta=-position_amt,
+            scale=project.scale_value,
+            follower_qty=-follower_amt,
+            reduce_only=True,
+            order_value=position_amt * mark_price,
+            follower_notional=follower_amt * mark_price,
+            follower_leverage=project.follower_leverage,
+            status="queued",
+            note=None,
+            created_at=leader_now,
+        )
+
+        self._event_sink(event)
+        self._spawn_task(self._executor.execute(event), "execute", project.leader_id)
+        state.follower_positions[key] = 0
+
+    async def _handle_okx_position_change(
+        self,
+        project: ProjectConfig,
+        state: ProjectState,
+        old_pos: Dict[str, Any],
+        new_pos: Dict[str, Any],
+        leader_now: int,
+    ) -> None:
+        """处理OKX仓位变化(加仓/减仓)"""
+        symbol = new_pos.get("symbol", "")
+        position_side = new_pos.get("positionSide", "LONG")
+        old_amt = abs(float(old_pos.get("positionAmount", 0)))
+        new_amt = abs(float(new_pos.get("positionAmount", 0)))
+        entry_price = float(new_pos.get("entryPrice", 0))
+        mark_price = float(new_pos.get("markPrice", 0)) or entry_price
+
+        delta = new_amt - old_amt
+        if math.isclose(delta, 0, abs_tol=POSITION_CHANGE_ABS_TOL):
+            return
+
+        is_add = delta > 0
+        action = "add" if is_add else "reduce"
+        side = ("BUY" if position_side == "LONG" else "SELL") if is_add else ("SELL" if position_side == "LONG" else "BUY")
+        price = entry_price if is_add else mark_price
+
+        # 计算跟单数量
+        follower_qty, follower_notional = self._calc_okx_follower_qty(
+            project, state, abs(delta), price, is_reduce=not is_add
+        )
+
+        if follower_qty is None:
+            return
+
+        if not is_add:
+            follower_qty = -abs(follower_qty)
+
+        event = OrderEvent(
+            event_id=str(uuid.uuid4()),
+            portfolio_id=project.leader_id,
+            trade_account_id=project.trade_account_id or None,
+            order_id=str(uuid.uuid4())[:8],
+            trade_id="",
+            action=action,
+            symbol=symbol,
+            position_side=position_side,
+            side=side,
+            executed_qty=abs(delta),
+            avg_price=price,
+            order_time=leader_now,
+            order_update_time=leader_now,
+            leader_delta=delta,
+            scale=project.scale_value,
+            follower_qty=follower_qty,
+            reduce_only=not is_add,
+            order_value=abs(delta) * price,
+            follower_notional=follower_notional,
+            follower_leverage=project.follower_leverage,
+            status="queued",
+            note=None,
+            created_at=leader_now,
+        )
+
+        self._event_sink(event)
+        self._spawn_task(self._executor.execute(event), "execute", project.leader_id)
+
+    def _calc_okx_follower_qty(
+        self,
+        project: ProjectConfig,
+        state: ProjectState,
+        leader_qty: float,
+        price: float,
+        is_reduce: bool,
+    ) -> Tuple[Optional[float], Optional[float]]:
+        """计算OKX跟单数量"""
+        if leader_qty <= 0 or price <= 0:
+            return None, None
+
+        scale_value = project.scale_value if project.scale_value > 0 else 1.0
+        order_value = leader_qty * price
+
+        if project.scale_mode == "fixed":
+            follower_notional = order_value * scale_value
+            follower_qty = follower_notional / price
+            return follower_qty, follower_notional
+
+        if project.scale_mode == "ratio":
+            follower_qty = leader_qty * scale_value
+            follower_notional = follower_qty * price
+            return follower_qty, follower_notional
+
+        # margin_ratio 模式
+        leader_equity = state.leader_margin if state.leader_margin > 0 else 10000
+        follower_equity = state.follower_equity if state.follower_equity > 0 else project.follower_equity
+
+        if leader_equity <= 0 or follower_equity <= 0:
+            return None, None
+
+        equity_ratio = follower_equity / leader_equity
+        follower_notional = order_value * equity_ratio * scale_value
+        follower_qty = follower_notional / price
+
+        return follower_qty, follower_notional

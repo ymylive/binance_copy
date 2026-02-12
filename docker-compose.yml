@@ -1,0 +1,12 @@
+﻿version: "3.9"
+services:
+  copy-sync:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./runtime/config.json:/app/config.json
+      - ./runtime/cookies.json:/app/cookies.json
+      - ./runtime/trade_config.json:/app/trade_config.json
+      - ./runtime/data:/app/data
+    restart: unless-stopped

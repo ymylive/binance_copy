@@ -1,0 +1,17 @@
+﻿__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.vscode/
+.idea/
+.git/
+*.log
+vps_code/venv/
+vps_code/.pytest_cache/
+vps_code/tests/
+vps_code/tmpclaude-*
+scripts/
+copy-sync.tar.gz
+vps_info.txt
+vps_log.txt
+runtime/
