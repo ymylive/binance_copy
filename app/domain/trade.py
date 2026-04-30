@@ -50,5 +50,10 @@ class TradeConfig(BaseModel):
 
 from .config import LeaderSubscription
 
-TradingAccount.model_rebuild(_types_namespace={"LeaderSubscription": LeaderSubscription})
-TradeConfig.model_rebuild(_types_namespace={"LeaderSubscription": LeaderSubscription})
+# `from __future__ import annotations` makes every annotation a string, so the
+# rebuild needs both LeaderSubscription *and* the typing names (List) in scope
+# to resolve `List["LeaderSubscription"]`.  Passing globals() avoids missing
+# any symbol used in field annotations.
+_REBUILD_NS = {**globals(), "LeaderSubscription": LeaderSubscription}
+TradingAccount.model_rebuild(_types_namespace=_REBUILD_NS)
+TradeConfig.model_rebuild(_types_namespace=_REBUILD_NS)
