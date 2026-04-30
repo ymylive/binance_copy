@@ -38,39 +38,26 @@ class PortfolioDetail:
         self.margin_balance = float(data.get("totalMarginBalance", 0))
 
 
-class ExchangeAdapter(ABC):
-    """Abstract base class for exchange adapters"""
+class LeaderAdapter(ABC):
+    """Abstract source of leader position snapshots and signal events.
+
+    Implementations: BinanceSession, OKXSession, HyperliquidAdapter,
+    BiCoinAdapter, SmartMoneyAdapter, ...
+    """
+    source_name: str = "abstract"  # subclasses override: binance / hyperliquid / etc.
 
     @abstractmethod
-    async def connect(self) -> bool:
-        """Establish connection to the exchange"""
-        pass
+    async def fetch_positions(self, leader_id: str) -> List[Dict[str, Any]]:
+        """Return leader's current open positions, normalised dict shape."""
+        ...
 
     @abstractmethod
-    async def disconnect(self) -> None:
-        """Close connection to the exchange"""
-        pass
+    async def health(self) -> Dict[str, Any]:
+        """Return adapter health: connected, last_poll_age_ms, last_error."""
+        ...
 
-    @abstractmethod
-    async def fetch_positions(self, portfolio_id: str) -> List[Position]:
-        """Fetch all positions for a portfolio"""
-        pass
-
-    @abstractmethod
-    async def fetch_order_history(
-        self,
-        portfolio_id: str,
-        params: Optional[Dict[str, Any]] = None
-    ) -> List[Order]:
-        """Fetch order history for a portfolio"""
-        pass
-
-    @abstractmethod
-    async def get_portfolio_detail(self, portfolio_id: str) -> PortfolioDetail:
-        """Get portfolio details including balance and equity"""
-        pass
-
-    @abstractmethod
-    async def is_connected(self) -> bool:
-        """Check if connection is active"""
-        pass
+    async def fetch_recent_signals(
+        self, leader_id: str, since_ms: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """Optional: recent signal events from the source. Default empty."""
+        return []

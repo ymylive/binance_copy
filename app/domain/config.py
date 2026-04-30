@@ -48,6 +48,9 @@ class LeaderSubscription(BaseModel):
     scale_value: float = 1.0
     monitor_mode: Literal["order_history", "position"] = "position"
     poll_interval_ms: int = 3000
+    source: Literal[
+        "binance", "binance-sm", "okx", "okx-lead", "hyperliquid", "bicoin", "project"
+    ] = "binance"
 
 
 class LeaderConfig(BaseModel):
@@ -56,6 +59,9 @@ class LeaderConfig(BaseModel):
     portfolio_id: str = ""
     name: str = ""
     enabled: bool = True
+    source: Literal[
+        "binance", "binance-sm", "okx", "okx-lead", "hyperliquid", "bicoin", "project"
+    ] = "binance"
 
 
 class SignalConfig(BaseModel):
