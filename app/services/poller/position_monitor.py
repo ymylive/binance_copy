@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -54,7 +55,18 @@ class PositionMonitor:
                 attempt + 1,
                 max_retries + 1,
             )
-            payload = await session.fetch_positions(leader_id)
+            # Round 2: measure fetch_positions() latency and feed a rolling
+            # window on the project state for ops dashboards.
+            t0 = time.perf_counter()
+            try:
+                payload = await session.fetch_positions(leader_id)
+            finally:
+                dur_ms = (time.perf_counter() - t0) * 1000.0
+                try:
+                    state.poll_latencies.append(dur_ms)
+                except Exception:
+                    # Defensive: never let metric collection break the poller.
+                    pass
 
             if payload.get("success"):
                 logger.info(

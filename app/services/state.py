@@ -4,7 +4,7 @@ import asyncio
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..core.logging import get_logger
 from ..core.time import now_ms
@@ -48,6 +48,13 @@ class AppState:
         self.executor = RoutedExecutor(ApiExecutor(), self.okx_executor)
         self.events = deque(maxlen=1000)
         self.onchain_events = deque(maxlen=1000)
+        # SSE fan-out: each subscriber owns a bounded asyncio.Queue. _add_event
+        # multicasts every recorded OrderEvent to all queues. Bounded to 200 to
+        # avoid unbounded memory growth from a slow client; on overflow we
+        # drop the oldest queued event to keep newest data flowing.
+        self._sse_subscribers: List[asyncio.Queue] = []
+        # Cache for compute_leader_sync results (3s TTL per leader_id+account_id).
+        self._sync_cache: Dict[Tuple[str, str], Tuple[int, Dict[str, Any]]] = {}
         self.leader = self._build_leader()
         self.poller = PollerManager(
             self.leader,
@@ -155,6 +162,20 @@ class AppState:
         if event.action not in {"open", "add", "reduce", "close"}:
             return
         self.events.appendleft(event)
+        # Multicast to SSE subscribers. We snapshot the list to make iteration
+        # safe against concurrent unsubscribe (asyncio is single-threaded but a
+        # subscriber can disappear between .put_nowait() calls if it raises).
+        for queue in list(self._sse_subscribers):
+            try:
+                queue.put_nowait(event)
+            except asyncio.QueueFull:
+                # Slow client: drop the oldest queued event to make room for
+                # the newest one. Best-effort; if it still fails we skip.
+                try:
+                    queue.get_nowait()
+                    queue.put_nowait(event)
+                except (asyncio.QueueEmpty, asyncio.QueueFull):
+                    pass
         logger.info(
             "order action=%s symbol=%s side=%s position=%s qty=%.6f price=%.6f value=%.4f status=%s portfolio=%s",
             event.action,
@@ -167,6 +188,22 @@ class AppState:
             event.status,
             event.portfolio_id,
         )
+
+    # ------------------------------------------------------------------
+    # SSE pub/sub helpers (used by /api/signals/stream)
+    # ------------------------------------------------------------------
+    def subscribe_signals(self) -> asyncio.Queue:
+        """Register a new SSE subscriber and return its bounded queue."""
+        queue: asyncio.Queue = asyncio.Queue(maxsize=200)
+        self._sse_subscribers.append(queue)
+        return queue
+
+    def unsubscribe_signals(self, queue: asyncio.Queue) -> None:
+        """Remove a subscriber. Idempotent."""
+        try:
+            self._sse_subscribers.remove(queue)
+        except ValueError:
+            pass
 
     def _add_onchain_event(self, event: OnchainEvent) -> None:
         self.onchain_events.appendleft(event)
@@ -579,3 +616,210 @@ class AppState:
             sub for sub in account.leader_subscriptions if sub.leader_id != leader_id
         ]
         self.upsert_account(account)
+
+    # ------------------------------------------------------------------
+    # signal-centric helpers (Round 2 routers consume these)
+    # ------------------------------------------------------------------
+    def find_project_for_leader(
+        self, leader_id: str, account_id: Optional[str] = None
+    ) -> Optional[ProjectConfig]:
+        """Pick the project that drives this (leader, account) pair.
+
+        Project key is (portfolio_id|leader_id) + trade_account_id. The poller
+        keys its state map by ProjectKey, so to bridge from leader_id we walk
+        the project list. account_id="" / None means "any".
+        """
+        target_account = self._account_key(account_id)
+        candidates: List[ProjectConfig] = []
+        for project in self.config.projects:
+            project_leader = project.leader_id or project.portfolio_id
+            if project_leader != leader_id:
+                continue
+            if account_id is None or account_id == "":
+                candidates.append(project)
+                continue
+            if self._account_key(project.trade_account_id) == target_account:
+                return project
+        if candidates:
+            return candidates[0]
+        return None
+
+    def project_state_for_leader(
+        self, leader_id: str, account_id: Optional[str] = None
+    ) -> Tuple[Optional[ProjectConfig], Optional[Any]]:
+        """Return (project, ProjectState) keyed by leader+account, or (None, None)."""
+        project = self.find_project_for_leader(leader_id, account_id)
+        if not project:
+            return None, None
+        key = self.project_key(project)
+        state = self.poller._states.get(key) if hasattr(self.poller, "_states") else None
+        return project, state
+
+    async def compute_leader_sync(
+        self, leader_id: str, account_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Build the leader-vs-mirror sync table for a single leader.
+
+        Cached for 3 seconds keyed on (leader_id, account_key) to keep the
+        endpoint cheap under polling from the UI without serving stale data.
+        """
+        cache_key = (leader_id, self._account_key(account_id))
+        cached = self._sync_cache.get(cache_key)
+        now = now_ms()
+        if cached and now - cached[0] < 3000:
+            return cached[1]
+
+        project, pstate = self.project_state_for_leader(leader_id, account_id)
+        rows: List[Dict[str, Any]] = []
+        summary = {"in_sync": 0, "drift": 0, "missing": 0, "extra": 0, "accuracy_pct": 0.0}
+
+        if not project:
+            payload: Dict[str, Any] = {
+                "leader_id": leader_id,
+                "account_id": account_id or "",
+                "computed_at_ms": now,
+                "rows": rows,
+                "summary": summary,
+            }
+            self._sync_cache[cache_key] = (now, payload)
+            return payload
+
+        # Leader positions snapshot from poller state
+        leader_positions: Dict[str, Dict[str, Any]] = {}
+        if pstate is not None:
+            for key, pos in pstate.leader_current_positions.items():
+                if not isinstance(pos, dict):
+                    continue
+                symbol = str(pos.get("symbol") or "")
+                if not symbol:
+                    continue
+                position_side = str(pos.get("positionSide") or "BOTH").upper()
+                try:
+                    raw_amt = pos.get("positionAmt")
+                    if raw_amt is None:
+                        raw_amt = pos.get("positionAmount")
+                    qty = abs(float(raw_amt or 0))
+                except (TypeError, ValueError):
+                    qty = 0.0
+                try:
+                    entry_price = float(pos.get("entryPrice") or 0)
+                except (TypeError, ValueError):
+                    entry_price = 0.0
+                leader_positions[(symbol, position_side)] = {
+                    "qty": qty,
+                    "notional": qty * entry_price,
+                }
+
+        # Follower positions via executor
+        follower_positions: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        try:
+            items = await self.executor.get_follower_positions(
+                project.trade_account_id or None
+            )
+        except Exception:
+            items = []
+        for item in items or []:
+            if not isinstance(item, dict):
+                continue
+            symbol = str(item.get("symbol") or "")
+            if not symbol:
+                continue
+            position_side = str(item.get("positionSide") or "BOTH").upper()
+            try:
+                qty = abs(float(item.get("positionAmt") or 0))
+            except (TypeError, ValueError):
+                qty = 0.0
+            try:
+                mark_price = float(item.get("markPrice") or item.get("entryPrice") or 0)
+            except (TypeError, ValueError):
+                mark_price = 0.0
+            follower_positions[(symbol, position_side)] = {
+                "qty": qty,
+                "notional": qty * mark_price,
+            }
+
+        all_keys = set(leader_positions.keys()) | set(follower_positions.keys())
+        for key in sorted(all_keys):
+            symbol, position_side = key
+            leader = leader_positions.get(key)
+            follower = follower_positions.get(key)
+            leader_qty = float(leader["qty"]) if leader else 0.0
+            leader_notional = float(leader["notional"]) if leader else 0.0
+            my_qty = float(follower["qty"]) if follower else 0.0
+            my_notional = float(follower["notional"]) if follower else 0.0
+
+            if leader and not follower:
+                status = "missing"
+                deviation_pct = 100.0
+            elif follower and not leader:
+                status = "extra"
+                deviation_pct = 100.0
+            else:
+                # Both sides present. Use notional ratio to detect drift.
+                if leader_notional > 0:
+                    deviation_pct = abs(my_notional - leader_notional) / leader_notional * 100.0
+                else:
+                    deviation_pct = 0.0
+                status = "ok" if deviation_pct < 5.0 else "drift"
+
+            rows.append(
+                {
+                    "symbol": symbol,
+                    "position_side": position_side,
+                    "leader_qty": leader_qty,
+                    "leader_notional_usd": leader_notional,
+                    "my_qty": my_qty,
+                    "my_notional_usd": my_notional,
+                    "deviation_pct": round(deviation_pct, 4),
+                    "deviation_status": status,
+                    "last_synced_at_ms": pstate.last_position_refresh if pstate else 0,
+                }
+            )
+            summary[status] = summary.get(status, 0) + 1
+
+        total = max(len(rows), 1)
+        summary["accuracy_pct"] = round(summary["in_sync"] / total * 100.0, 2)
+
+        payload = {
+            "leader_id": leader_id,
+            "account_id": account_id or "",
+            "computed_at_ms": now,
+            "rows": rows,
+            "summary": summary,
+        }
+        self._sync_cache[cache_key] = (now, payload)
+        return payload
+
+    def serialize_signal(self, event: OrderEvent) -> Dict[str, Any]:
+        """Render an OrderEvent in the signal-centric schema (#3 / SSE row).
+
+        OrderEvent today does not always set leader_id/account_id explicitly,
+        but portfolio_id IS the leader_id for binance projects (see
+        EventGenerator). We surface both fields for forward-compat: if
+        leader_id is missing we fall back to portfolio_id.
+        """
+        leader_id = event.leader_id or event.portfolio_id or ""
+        account_id = (
+            event.account_id
+            or event.trade_account_id
+            or "default"
+        )
+        leader_action = event.action if event.action in {"open", "add", "reduce", "close"} else "open"
+        return {
+            "signal_id": event.event_id,
+            "leader_id": leader_id,
+            "account_id": account_id,
+            "detected_at_ms": event.created_at,
+            "leader_action": leader_action,
+            "symbol": event.symbol,
+            "side": event.side,
+            "position_side": event.position_side,
+            "leader_delta_qty": event.leader_delta or event.executed_qty,
+            "leader_avg_price": event.avg_price,
+            "mirror_status": event.mirror_status,
+            "mirror_qty": event.follower_qty,
+            "mirror_sent_at_ms": event.mirror_sent_at_ms,
+            "mirror_filled_at_ms": event.mirror_filled_at_ms,
+            "mirror_latency_ms": event.mirror_latency_ms,
+            "mirror_error": event.mirror_error,
+        }

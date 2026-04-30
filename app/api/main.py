@@ -194,11 +194,36 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # ---------------------------------------------------------------------------
+# Round 2 routers (signal-centric API surface).
+# Registered BEFORE the legacy @app.get("/api/leaders") block below so that
+# FastAPI's first-match route resolution serves the enriched payload to new
+# callers. Old callers that hit /api/leaders/{id} (single-segment) still get
+# the legacy single-leader handler because the router does not define that
+# overload.
+# ---------------------------------------------------------------------------
+from .routers import leaders as _leaders_router  # noqa: E402
+from .routers import signals as _signals_router  # noqa: E402
+from .routers import health as _health_router  # noqa: E402
+from .routers import metrics as _metrics_router  # noqa: E402
+
+app.include_router(_leaders_router.router, prefix="/api", tags=["leaders"])
+app.include_router(_signals_router.router, prefix="/api", tags=["signals"])
+app.include_router(_health_router.router, prefix="/api", tags=["health"])
+app.include_router(_metrics_router.router, prefix="/api", tags=["metrics"])
+
+
+# ---------------------------------------------------------------------------
 # Global /api/* auth enforcement
 # ---------------------------------------------------------------------------
 # We apply the bearer-token check as a middleware so every existing and future
 # /api/* route is covered without needing to amend 56 decorators. The static
 # index ("/", "/favicon.ico") and "/static/*" are exempt by path prefix.
+#
+# Special case: /api/signals/stream is a Server-Sent Events endpoint. Browser
+# EventSource API cannot attach an Authorization header, so we accept the API
+# token via ?token= query parameter and validate it inside the route. The
+# middleware therefore skips this single path. The route handler itself uses
+# secrets.compare_digest so the path is not actually unauthenticated.
 @app.middleware("http")
 async def _api_auth_middleware(request: Request, call_next):
     path = request.url.path or ""
@@ -206,6 +231,9 @@ async def _api_auth_middleware(request: Request, call_next):
         return await call_next(request)
     if request.method == "OPTIONS":
         # Let CORS preflight succeed without auth.
+        return await call_next(request)
+    if path == "/api/signals/stream":
+        # Token check is enforced inside the SSE route handler via query param.
         return await call_next(request)
     if not API_TOKEN:
         return JSONResponse(

@@ -80,6 +80,22 @@ class PollerManager:
             for pid, state in self._states.items()
         }
 
+    def poll_latency_samples(self, project_key: str) -> list[float]:
+        """Return a snapshot of the rolling poll-latency window for a project.
+
+        Returns an empty list if the project is not currently tracked. The
+        caller owns the returned list (we copy out of the deque so they cannot
+        mutate poller state).
+        """
+        state = self._states.get(project_key)
+        if not state:
+            return []
+        return list(state.poll_latencies)
+
+    def all_poll_latency_samples(self) -> Dict[str, list[float]]:
+        """Snapshot of every tracked project's poll-latency window."""
+        return {pid: list(s.poll_latencies) for pid, s in self._states.items()}
+
     def list_positions(self) -> list[Dict[str, object]]:
         """List all positions across portfolios"""
         results: list[Dict[str, object]] = []

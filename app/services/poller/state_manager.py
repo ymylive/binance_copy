@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
-from typing import Any, Dict
+from typing import Any, Deque, Dict
 
 
 class DedupSet:
@@ -66,6 +66,10 @@ class AccountLeaderState:
     position_missing_hits: Dict[str, int] = field(default_factory=dict)
     first_run: bool = True
     initial_positions_copied: bool = False
+
+    # Rolling window of fetch_positions() latency samples in milliseconds.
+    # Round 2: surfaced via /api/leaders and /api/health/poller for ops UX.
+    poll_latencies: Deque[float] = field(default_factory=lambda: deque(maxlen=20))
 
 
 # Backward compatibility alias
