@@ -751,16 +751,48 @@ class ApiExecutor(Executor):
         return None, None
 
     async def execute(self, event: OrderEvent) -> Dict[str, str]:
+        # Mirror lifecycle bootstrap: every execute() path must write mirror_status before return.
+        event.mirror_status = "pending"
+        mirror_started_at = now_ms()
+        # leader_detected_at is the moment the leader's position change was observed by the poller.
+        # Fallback chain: order_update_time (Binance ws ts) -> order_time (api ts) -> created_at (poller ts).
+        leader_detected_at = (
+            event.order_update_time
+            or event.order_time
+            or event.created_at
+            or mirror_started_at
+        )
+
+        def _skip(note: str) -> Dict[str, str]:
+            event.mirror_status = "skipped"
+            event.mirror_error = note
+            return {"status": "skipped", "event_id": event.event_id, "note": note}
+
+        def _fail(note: str) -> Dict[str, str]:
+            event.mirror_status = "failed"
+            event.mirror_error = note
+            event.mirror_filled_at_ms = now_ms()
+            event.mirror_latency_ms = event.mirror_filled_at_ms - leader_detected_at
+            return {"status": "error", "event_id": event.event_id, "note": note}
+
+        def _disabled(note: Optional[str] = None) -> Dict[str, str]:
+            event.mirror_status = "skipped"
+            event.mirror_error = note or "disabled"
+            payload: Dict[str, str] = {"status": "disabled", "event_id": event.event_id}
+            if note:
+                payload["note"] = note
+            return payload
+
         config = self._load_trade_config()
         if not self._config_enabled(config):
-            return {"status": "disabled", "event_id": event.event_id}
+            return _disabled()
         account = self._resolve_account(config, event.trade_account_id)
         if not account:
-            return {"status": "error", "event_id": event.event_id, "note": "account_not_found"}
+            return _fail("account_not_found")
         if not account.enabled:
-            return {"status": "disabled", "event_id": event.event_id, "note": "account_disabled"}
+            return _disabled("account_disabled")
         if not account.api_key or not account.api_secret:
-            return {"status": "error", "event_id": event.event_id, "note": "missing api key/secret"}
+            return _fail("missing api key/secret")
         runtime = self._get_runtime(account.account_id)
 
         if event.action in {"reduce", "close"}:
@@ -782,7 +814,7 @@ class ApiExecutor(Executor):
                 position_mode=position_mode,
             )
             if position_amt is None:
-                return {"status": "skipped", "event_id": event.event_id, "note": "no_position"}
+                return _skip("no_position")
             event.side = "SELL" if position_amt > 0 else "BUY"
             if inferred_side:
                 event.position_side = inferred_side
@@ -798,23 +830,15 @@ class ApiExecutor(Executor):
             if notional is None or notional <= 0:
                 notional = abs(event.follower_qty) * max(event.avg_price, 0.0)
             if notional <= 0:
-                return {
-                    "status": "error",
-                    "event_id": event.event_id,
-                    "note": "notional_unavailable",
-                }
+                return _fail("notional_unavailable")
             price = await self._get_price(account, runtime, event.symbol) or 0.0
             if price <= 0:
-                return {
-                    "status": "error",
-                    "event_id": event.event_id,
-                    "note": "price_unavailable",
-                }
+                return _fail("price_unavailable")
             qty = notional / price
             price_for_adjust = price
             target_notional = notional
         if qty <= 0 or math.isclose(qty, 0.0):
-            return {"status": "skipped", "event_id": event.event_id, "note": "zero qty"}
+            return _skip("zero qty")
 
         adjusted_qty, adjust_note = await self._adjust_qty(
             account,
@@ -828,11 +852,7 @@ class ApiExecutor(Executor):
             margin_tolerance=MARGIN_TOLERANCE_USDT,
         )
         if adjusted_qty <= 0:
-            return {
-                "status": "skipped",
-                "event_id": event.event_id,
-                "note": adjust_note or "qty_adjusted_to_zero",
-            }
+            return _skip(adjust_note or "qty_adjusted_to_zero")
         if event.follower_qty < 0:
             event.follower_qty = -adjusted_qty
         else:
@@ -846,11 +866,7 @@ class ApiExecutor(Executor):
                 event.follower_leverage,
             )
             if not ok:
-                return {
-                    "status": "error",
-                    "event_id": event.event_id,
-                    "note": "leverage_set_failed",
-                }
+                return _fail("leverage_set_failed")
 
         await self._sync_time(account, runtime)
         timestamp = now_ms() + runtime.time_offset_ms
@@ -893,6 +909,13 @@ class ApiExecutor(Executor):
         binance_time = event.order_update_time or event.order_time
         if binance_time and binance_time > 0:
             event.latency_ms = executed_at - binance_time
+        # Mirror lifecycle: success path. sent_at = when we kicked off the request,
+        # filled_at = when exchange ack returned, latency = full leader->fill round-trip.
+        event.mirror_status = "sent"
+        event.mirror_sent_at_ms = mirror_started_at
+        event.mirror_filled_at_ms = executed_at
+        event.mirror_latency_ms = executed_at - leader_detected_at
+        event.mirror_error = None
         response = resp.json()
         logger.info(
             "order executed symbol=%s side=%s qty=%.8f latency=%dms event_id=%s",

@@ -606,17 +606,47 @@ class OKXExecutor:
 
     async def execute(self, event: OrderEvent) -> Dict[str, str]:
         """执行跟单订单"""
+        # Mirror lifecycle bootstrap (mirrors ApiExecutor.execute()).
+        event.mirror_status = "pending"
+        mirror_started_at = now_ms()
+        leader_detected_at = (
+            event.order_update_time
+            or event.order_time
+            or event.created_at
+            or mirror_started_at
+        )
+
+        def _skip(note: str) -> Dict[str, str]:
+            event.mirror_status = "skipped"
+            event.mirror_error = note
+            return {"status": "skipped", "event_id": event.event_id, "note": note}
+
+        def _fail(note: str) -> Dict[str, str]:
+            event.mirror_status = "failed"
+            event.mirror_error = note
+            event.mirror_filled_at_ms = now_ms()
+            event.mirror_latency_ms = event.mirror_filled_at_ms - leader_detected_at
+            return {"status": "error", "event_id": event.event_id, "note": note}
+
+        def _disabled(note: Optional[str] = None) -> Dict[str, str]:
+            event.mirror_status = "skipped"
+            event.mirror_error = note or "disabled"
+            payload: Dict[str, str] = {"status": "disabled", "event_id": event.event_id}
+            if note:
+                payload["note"] = note
+            return payload
+
         config = self._load_config()
         if not self._config_enabled(config):
-            return {"status": "disabled", "event_id": event.event_id}
+            return _disabled()
 
         account = self._resolve_account(config, event.trade_account_id)
         if not account:
-            return {"status": "error", "event_id": event.event_id, "note": "account_not_found"}
+            return _fail("account_not_found")
         if not account.enabled:
-            return {"status": "disabled", "event_id": event.event_id, "note": "account_disabled"}
+            return _disabled("account_disabled")
         if not account.api_key or not account.api_secret or not account.passphrase:
-            return {"status": "error", "event_id": event.event_id, "note": "missing credentials"}
+            return _fail("missing credentials")
 
         runtime = self._get_runtime(account.account_id)
 
@@ -635,7 +665,7 @@ class OKXExecutor:
         # 构建订单
         coin_qty = abs(event.follower_qty)
         if coin_qty <= 0:
-            return {"status": "skipped", "event_id": event.event_id, "note": "zero_qty"}
+            return _skip("zero_qty")
 
         # OKX SWAP `sz` is in CONTRACTS, not coins. Convert via ctVal and quantize by lotSz.
         contracts = coin_qty
@@ -655,11 +685,7 @@ class OKXExecutor:
                     if event.reduce_only:
                         contracts = min_sz
                     else:
-                        return {
-                            "status": "skipped",
-                            "event_id": event.event_id,
-                            "note": "below_min_sz",
-                        }
+                        return _skip("below_min_sz")
         else:
             logger.warning(
                 "okx instrument metadata missing inst_id=%s; sending raw coin qty (may be wrong unit)",
@@ -667,7 +693,7 @@ class OKXExecutor:
             )
 
         if contracts <= 0:
-            return {"status": "skipped", "event_id": event.event_id, "note": "zero_contracts"}
+            return _skip("zero_contracts")
 
         timestamp = self._get_timestamp()
         path = "/api/v5/trade/order"
@@ -718,6 +744,12 @@ class OKXExecutor:
 
             if data.get("code") == "0":
                 order_data = data.get("data", [{}])[0]
+                # Mirror lifecycle: success path.
+                event.mirror_status = "sent"
+                event.mirror_sent_at_ms = mirror_started_at
+                event.mirror_filled_at_ms = executed_at
+                event.mirror_latency_ms = executed_at - leader_detected_at
+                event.mirror_error = None
                 return {
                     "status": "sent",
                     "event_id": event.event_id,
@@ -725,12 +757,18 @@ class OKXExecutor:
                     "response": json.dumps(data),
                 }
             else:
+                # OKX returned non-zero code: treat as failed mirror.
+                note = data.get("msg", "unknown error")
+                event.mirror_status = "failed"
+                event.mirror_error = note
+                event.mirror_filled_at_ms = executed_at
+                event.mirror_latency_ms = executed_at - leader_detected_at
                 return {
                     "status": "error",
                     "event_id": event.event_id,
-                    "note": data.get("msg", "unknown error"),
+                    "note": note,
                     "response": json.dumps(data),
                 }
         except Exception as e:
             logger.error("OKX execute error: %s", e)
-            return {"status": "error", "event_id": event.event_id, "note": str(e)}
+            return _fail(str(e))

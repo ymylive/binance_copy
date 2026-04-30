@@ -1,6 +1,6 @@
 ﻿from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -36,3 +36,11 @@ class OrderEvent(BaseModel):
     created_at: int
     executed_at: Optional[int] = None
     latency_ms: Optional[int] = None
+    # Mirror lifecycle: join leader-detected signal with follower execution outcome.
+    # status above remains the legacy field other code reads (sent/skipped/error/disabled).
+    # mirror_* fields are additive: they expose the join key + timing surface for KPIs.
+    mirror_status: Literal["pending", "sent", "skipped", "failed"] = "pending"
+    mirror_sent_at_ms: Optional[int] = None
+    mirror_filled_at_ms: Optional[int] = None
+    mirror_latency_ms: Optional[int] = None  # filled_at - leader_detected
+    mirror_error: Optional[str] = None

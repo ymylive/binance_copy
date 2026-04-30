@@ -267,6 +267,27 @@ class AppState:
     def record_event(self, event: OrderEvent) -> None:
         self._add_event(event)
 
+    def update_signal(self, event_id: str, **fields) -> None:
+        """Patch a recorded signal with mirror execution outcome.
+
+        Surface for upstream callers (poller / API / SSE) to attach mirror lifecycle
+        updates after the executor has returned. The executor itself mutates the
+        OrderEvent in place during execute(), so this is for out-of-band patches
+        (e.g. delayed exchange ack, manual reclassification).
+
+        Silently ignores unknown event_ids and unknown field names — callers
+        should not need defensive try/except, and we never raise on a stale id
+        because events.deque has maxlen and old events get evicted naturally.
+        """
+        if not event_id:
+            return
+        for evt in self.events:
+            if evt.event_id == event_id:
+                for key, value in fields.items():
+                    if hasattr(evt, key):
+                        setattr(evt, key, value)
+                return
+
     def _cookie_status(self, fetch_summary: Dict[str, object]) -> str:
         if not self._config_store.cookie_exists(self.config):
             return "missing"
