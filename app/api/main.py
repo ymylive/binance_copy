@@ -1,17 +1,20 @@
 ﻿from __future__ import annotations
 
 import json
+import os
 import re
-from typing import Dict, List, Literal, Optional
+import secrets
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Literal, Optional
 
-from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Body, Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from ..core.logging import LOG_BUFFER, get_logger
-from ..core.paths import STATIC_DIR
+from ..core.paths import ROOT_DIR, STATIC_DIR
 from ..core.time import now_ms
 from ..domain.config import (
     ConfigPatch,
@@ -35,17 +38,225 @@ config_store = ConfigStore()
 state = AppState(config_store)
 logger = get_logger()
 
-app = FastAPI(title="Binance Copy Sync", version="0.1.0")
+
+# ---------------------------------------------------------------------------
+# API token bootstrap
+# ---------------------------------------------------------------------------
+# Resolution order:
+#   1. BINANCE_COPY_API_TOKEN env var
+#   2. AppConfig field `api_token` (read-only soft-extra, optional)
+#   3. runtime/api_token.txt (auto-generated on first run, mode 0600)
+#
+# Token is required for all /api/* routes. The static index page and /static/*
+# remain public; the front-end is expected to attach the token as a Bearer
+# header itself (no front-end change is shipped here).
+RUNTIME_DIR = ROOT_DIR / "runtime"
+API_TOKEN_FILE = RUNTIME_DIR / "api_token.txt"
+
+
+def _read_token_from_config() -> Optional[str]:
+    try:
+        cfg_dict = config_store.load().model_dump()
+    except Exception:  # pragma: no cover - defensive
+        return None
+    value = cfg_dict.get("api_token")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _read_token_from_file() -> Optional[str]:
+    try:
+        if API_TOKEN_FILE.is_file():
+            text = API_TOKEN_FILE.read_text(encoding="utf-8").strip()
+            return text or None
+    except OSError:
+        return None
+    return None
+
+
+def _generate_and_persist_token() -> str:
+    token = secrets.token_urlsafe(32)
+    try:
+        RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+        API_TOKEN_FILE.write_text(token + "\n", encoding="utf-8")
+        try:
+            os.chmod(API_TOKEN_FILE, 0o600)
+        except OSError:
+            # On some filesystems chmod is a no-op; not fatal.
+            pass
+    except OSError as exc:
+        logger.error("failed to persist api token: %s", exc)
+    # Print once to stdout so an operator can copy it on first boot.
+    print(
+        f"[binance-copy] generated API token (saved to {API_TOKEN_FILE}): {token}",
+        flush=True,
+    )
+    return token
+
+
+def _load_api_token() -> str:
+    env_token = os.getenv("BINANCE_COPY_API_TOKEN", "").strip()
+    if env_token:
+        return env_token
+    cfg_token = _read_token_from_config()
+    if cfg_token:
+        return cfg_token
+    file_token = _read_token_from_file()
+    if file_token:
+        return file_token
+    return _generate_and_persist_token()
+
+
+API_TOKEN: str = _load_api_token()
+
+
+def _unauthorized() -> JSONResponse:
+    return JSONResponse(
+        status_code=401,
+        content={
+            "error": "unauthorized",
+            "hint": (
+                "set Authorization: Bearer <token> header or run with "
+                "auth_disabled=true on localhost"
+            ),
+        },
+    )
+
+
+async def verify_api_token(
+    authorization: Optional[str] = Header(default=None),
+) -> None:
+    """FastAPI dependency: enforce a bearer token on every /api/* route."""
+    if not API_TOKEN:
+        # Fail closed if we somehow have no token configured.
+        raise HTTPException(status_code=503, detail="api token not configured")
+    if not authorization or not authorization.lower().startswith("bearer "):
+        # Raise via HTTPException with a structured detail body matching the
+        # hint contract above.
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "unauthorized",
+                "hint": (
+                    "set Authorization: Bearer <token> header or run with "
+                    "auth_disabled=true on localhost"
+                ),
+            },
+        )
+    presented = authorization.split(" ", 1)[1].strip()
+    if not secrets.compare_digest(presented, API_TOKEN):
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "unauthorized",
+                "hint": (
+                    "set Authorization: Bearer <token> header or run with "
+                    "auth_disabled=true on localhost"
+                ),
+            },
+        )
+
+
+# ---------------------------------------------------------------------------
+# CORS allowlist
+# ---------------------------------------------------------------------------
+def _resolve_cors_origins() -> List[str]:
+    default = ["http://localhost:8000", "http://127.0.0.1:8000"]
+    try:
+        cfg_dict = config_store.load().model_dump()
+    except Exception:
+        return default
+    value = cfg_dict.get("allowed_origins")
+    if isinstance(value, list) and all(isinstance(v, str) and v for v in value):
+        return list(value)
+    return default
+
+
+# Disable OpenAPI/docs in production to avoid leaking endpoint surface.
+app = FastAPI(
+    title="Binance Copy Sync",
+    version="0.1.0",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_resolve_cors_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+# ---------------------------------------------------------------------------
+# Global /api/* auth enforcement
+# ---------------------------------------------------------------------------
+# We apply the bearer-token check as a middleware so every existing and future
+# /api/* route is covered without needing to amend 56 decorators. The static
+# index ("/", "/favicon.ico") and "/static/*" are exempt by path prefix.
+@app.middleware("http")
+async def _api_auth_middleware(request: Request, call_next):
+    path = request.url.path or ""
+    if not path.startswith("/api/"):
+        return await call_next(request)
+    if request.method == "OPTIONS":
+        # Let CORS preflight succeed without auth.
+        return await call_next(request)
+    if not API_TOKEN:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "api token not configured"},
+        )
+    auth_header = request.headers.get("authorization") or request.headers.get(
+        "Authorization"
+    )
+    if not auth_header or not auth_header.lower().startswith("bearer "):
+        return _unauthorized()
+    presented = auth_header.split(" ", 1)[1].strip()
+    if not secrets.compare_digest(presented, API_TOKEN):
+        return _unauthorized()
+    return await call_next(request)
+
+
+# ---------------------------------------------------------------------------
+# Secret masking helpers
+# ---------------------------------------------------------------------------
+_SECRET_FIELDS = ("api_key", "api_secret", "passphrase")
+
+
+def _mask_secret(value: Any) -> str:
+    """Return a masked representation of a credential.
+
+    Empty/None becomes "" so the front-end can detect "not set".
+    Non-empty values are rendered as ****<last4> (or **** for short ones).
+    """
+    if value is None:
+        return ""
+    text = str(value)
+    if not text:
+        return ""
+    if len(text) <= 4:
+        return "****"
+    return "****" + text[-4:]
+
+
+def _mask_in_place(payload: Any) -> Any:
+    """Recursively mask known credential fields in a dict/list structure."""
+    if isinstance(payload, dict):
+        for key, value in list(payload.items()):
+            if key in _SECRET_FIELDS and isinstance(value, (str, type(None))):
+                payload[key] = _mask_secret(value)
+            else:
+                _mask_in_place(value)
+    elif isinstance(payload, list):
+        for item in payload:
+            _mask_in_place(item)
+    return payload
 
 
 def resolve_cookie_path(value: str):
@@ -131,7 +342,10 @@ async def connect() -> Dict[str, object]:
 
 @app.get("/api/config")
 async def get_config() -> Dict[str, object]:
-    return state.config.model_dump(mode="json")
+    payload = state.config.model_dump(mode="json")
+    # AppConfig itself does not carry api_key/api_secret today, but mask
+    # defensively in case any nested account/leader struct does.
+    return _mask_in_place(payload)
 
 
 @app.post("/api/cookies")
@@ -503,7 +717,9 @@ def parse_cookie_payload(raw: str) -> tuple[List[Dict[str, str]], Dict[str, str]
 
 @app.get("/api/trade-config")
 async def get_trade_config() -> Dict[str, object]:
-    return load_trade_config().model_dump(mode="json")
+    payload = load_trade_config().model_dump(mode="json")
+    # Mask api_key/api_secret/passphrase on every account before returning.
+    return _mask_in_place(payload)
 
 
 @app.post("/api/trade-config")
@@ -885,17 +1101,19 @@ async def get_account_summary(account_id: Optional[str] = None) -> Dict[str, obj
 @app.get("/api/accounts")
 async def list_accounts() -> List[Dict[str, object]]:
     try:
-        return [account.model_dump() for account in state.list_accounts()]
+        items = [account.model_dump() for account in state.list_accounts()]
     except Exception:
         logger.exception("list accounts failed")
         return []
+    # Mask credentials on every account in the list before returning.
+    return [_mask_in_place(item) for item in items]
 
 
 @app.get("/api/accounts/{account_id}")
 async def get_account(account_id: str) -> Dict[str, object]:
     try:
         account = state.get_account(account_id)
-        return account.model_dump()
+        return _mask_in_place(account.model_dump())
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Account {account_id} not found")
 
@@ -969,6 +1187,15 @@ async def remove_subscription(account_id: str, leader_id: str) -> Dict[str, obje
 
 @app.post("/api/simulate")
 async def simulate_order(payload: SimulateOrderInput) -> Dict[str, object]:
+    # Hard refuse live execution via the simulate endpoint. The previous
+    # behaviour allowed an authenticated caller to flip execute=true and
+    # actually fire an order via state.executor.execute() — this is a
+    # foot-gun and is now blocked at the entry point.
+    if payload.execute:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "execute=true disabled for safety"},
+        )
     if payload.notional_usd <= 0:
         raise HTTPException(status_code=400, detail="notional_usd must be positive")
     portfolio_id = payload.portfolio_id
@@ -1070,9 +1297,9 @@ async def simulate_order(payload: SimulateOrderInput) -> Dict[str, object]:
         created_at=now,
     )
     state.record_event(event)
+    # execute=true is rejected at the top of this handler; we never call
+    # state.executor.execute(event) from this endpoint.
     result = None
-    if payload.execute:
-        result = await state.executor.execute(event)
     logger.info(
         "simulated order portfolio=%s symbol=%s side=%s position=%s notional=%s price=%s",
         portfolio_id,

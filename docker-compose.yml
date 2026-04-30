@@ -1,12 +1,19 @@
-﻿version: "3.9"
+version: "3.9"
 services:
   copy-sync:
     build: .
+    # Bind only to loopback so the API is not reachable from the public
+    # network. Front it with a TLS-terminating reverse proxy if external
+    # access is required.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./runtime/config.json:/app/config.json
       - ./runtime/cookies.json:/app/cookies.json
       - ./runtime/trade_config.json:/app/trade_config.json
       - ./runtime/data:/app/data
+      - ./runtime/api_token.txt:/app/runtime/api_token.txt
+    environment:
+      # Override at deploy time to avoid relying on the auto-generated file.
+      - BINANCE_COPY_API_TOKEN=${BINANCE_COPY_API_TOKEN:-}
     restart: unless-stopped

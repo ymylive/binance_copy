@@ -1,11 +1,17 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from ..core.paths import CONFIG_PATH, ROOT_DIR, TRADE_CONFIG_PATH
 from ..core.storage import load_json, save_json
 from ..domain.config import AppConfig
 from ..domain.trade import TradeConfig
+
+
+# Whitelist for cookie filenames: alphanumeric + _.- only, must end in .json.
+# Rejects path separators, traversal sequences, and absolute paths.
+_COOKIE_BASENAME_RE = re.compile(r"[A-Za-z0-9_.-]+\.json")
 
 
 class ConfigStore:
@@ -34,7 +40,27 @@ class ConfigStore:
         save_json(self._trade_path, config)
 
     def resolve_cookie_path(self, value: str) -> Path:
-        candidate = (ROOT_DIR / value).resolve()
+        if value is None:
+            raise ValueError("cookie_path is required")
+        candidate_str = str(value).strip()
+        if not candidate_str:
+            raise ValueError("cookie_path must not be empty")
+
+        # Reject absolute paths and any path-separator / traversal characters
+        # before touching the filesystem. This is a strict basename whitelist.
+        if (
+            "/" in candidate_str
+            or "\\" in candidate_str
+            or ".." in candidate_str
+            or candidate_str.startswith("~")
+        ):
+            raise ValueError("cookie_path must be a bare filename without path components")
+        if not _COOKIE_BASENAME_RE.fullmatch(candidate_str):
+            raise ValueError(
+                "cookie_path must match [A-Za-z0-9_.-]+\\.json (no path separators)"
+            )
+
+        candidate = (ROOT_DIR / candidate_str).resolve()
         if ROOT_DIR not in candidate.parents and candidate != ROOT_DIR:
             raise ValueError("cookie_path is outside project root")
         return candidate

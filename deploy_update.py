@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """部署更新到 VPS"""
+# TODO(security): paramiko's AutoAddPolicy below silently trusts any host key
+# on first connect, which is vulnerable to MITM on the very first deploy. For
+# production use, switch to RejectPolicy + a pinned known_hosts file.
 import json
 import os
+import sys
 
 import paramiko
 
-VPS_HOST = os.getenv("VPS_HOST", "43.133.12.98")
+VPS_HOST = os.getenv("VPS_HOST")
+if not VPS_HOST:
+    raise SystemExit("set VPS_HOST env var")
 VPS_USER = os.getenv("VPS_USER", "root")
 VPS_PASS = os.getenv("VPS_PASS")
 if not VPS_PASS:
-    raise RuntimeError("Missing VPS_PASS environment variable")
+    raise SystemExit("set VPS_PASS env var")
 REMOTE_PATH = "/opt/binance-copy-sync/"
 LOCAL_PATH = os.path.dirname(os.path.abspath(__file__))
 

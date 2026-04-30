@@ -1,4 +1,4 @@
-﻿__pycache__/
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -15,3 +15,7 @@ copy-sync.tar.gz
 vps_info.txt
 vps_log.txt
 runtime/
+# Never ship credentials or local config snapshots into the image.
+*cookie*.json
+*config.json
+vps_*.txt
