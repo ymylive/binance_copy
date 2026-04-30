@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import os
@@ -25,13 +26,31 @@ def _clear_chrome_profile_lock(profile_dir: str = "/opt/chrome-cdp") -> None:
     except Exception:
         pass
 
-def _kill_all_chrome():
-    """杀掉所有 Chrome/Chromium 进程，确保只有一个实例"""
+def _kill_all_chrome_sync():
+    """同步版本：杀掉所有 Chrome/Chromium 进程（仅供非async场景使用）"""
     try:
         subprocess.run(["pkill", "-9", "-f", "chromium"], capture_output=True)
         subprocess.run(["pkill", "-9", "-f", "chrome"], capture_output=True)
         time.sleep(0.5)
     except:
+        pass
+
+
+async def _kill_all_chrome():
+    """异步杀掉所有 Chrome/Chromium 进程，避免阻塞 event loop"""
+    try:
+        for pattern in ("chromium", "chrome"):
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "pkill", "-9", "-f", pattern,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                await proc.wait()
+            except Exception:
+                pass
+        await asyncio.sleep(0.5)
+    except Exception:
         pass
 
 
@@ -70,6 +89,7 @@ class BinanceSession:
         self._context = None
         self._client: Optional[httpx.AsyncClient] = None
         self._cookie_mtime: Optional[float] = None
+        self._page_cookie_mtime: Optional[float] = None  # 页面 context add_cookies 的 mtime
         self._cookie_cache: Dict[str, str] = {}
         self._header_cache: Dict[str, str] = {}
         self._capture_attached = False
@@ -80,9 +100,10 @@ class BinanceSession:
         self._health_check_interval = 10000  # 优化：从30秒降到10秒
         self._reconnect_count = 0
         self._keepalive_task = None
-        self._keepalive_interval = 5  # 5秒心跳间隔
+        self._keepalive_interval = 5  # 5秒心跳间隔（合并 keepalive + health check）
         self._external_context = False
         self._session_initialized = False  # 标记是否已初始化登录态
+        self._page_initialized: Dict[str, bool] = {}  # 每个 portfolio_id 是否已首次导航
 
     async def connect(self) -> bool:
         if self.connected:
@@ -101,10 +122,9 @@ class BinanceSession:
             return True
         use_external_cdp = self.auth_mode == "cdp" and bool(self.cdp_url)
         if not use_external_cdp:
-            _kill_all_chrome()
+            await _kill_all_chrome()
         try:
             from playwright.async_api import async_playwright
-            import asyncio
 
             self._playwright = await async_playwright().start()
             if use_external_cdp:
@@ -122,7 +142,7 @@ class BinanceSession:
                     self.connected = False
                     return False
             else:
-                _kill_all_chrome()
+                await _kill_all_chrome()
                 _clear_chrome_profile_lock()
                 self._browser = await self._playwright.chromium.launch_persistent_context(
                     user_data_dir="/opt/chrome-cdp",
@@ -142,7 +162,7 @@ class BinanceSession:
             self.last_error = None
             self._last_health_check = now_ms()
             if self._keepalive_task is None or self._keepalive_task.done():
-                self._keepalive_task = asyncio.create_task(self._keepalive_loop())
+                self._keepalive_task = asyncio.create_task(self._health_loop())
             return True
         except Exception as exc:
             self.connected = False
@@ -171,23 +191,25 @@ class BinanceSession:
         self._context = None
         self._capture_attached = False
 
-    async def _check_browser_health(self) -> bool:
-        """检查浏览器是否健康"""
-        now = now_ms()
-        if now - self._last_health_check < self._health_check_interval:
-            return True
-        self._last_health_check = now
-
+    async def _probe_alive(self) -> bool:
+        """单次探活：执行一次 page.evaluate，同时充当 keepalive。"""
         try:
             if not self._browser or not self._context:
                 return False
-            # 检查是否有可用页面
             if self._context.pages:
                 page = self._context.pages[0]
-                await page.evaluate("() => true", timeout=5000)
+                await page.evaluate("() => Date.now()", timeout=3000)
+            self._last_health_check = now_ms()
             return True
-        except:
+        except Exception:
             return False
+
+    async def _check_browser_health(self) -> bool:
+        """检查浏览器是否健康（节流：默认 10s 一次）。"""
+        now = now_ms()
+        if now - self._last_health_check < self._health_check_interval:
+            return True
+        return await self._probe_alive()
 
     async def _ensure_browser_alive(self) -> bool:
         """确保浏览器存活，崩溃时自动重连"""
@@ -200,20 +222,21 @@ class BinanceSession:
         await self._cleanup_resources()
         return await self.connect()
 
-    async def _keepalive_loop(self) -> None:
-        """后台心跳任务，定期检查浏览器健康状态"""
-        import asyncio
+    async def _health_loop(self) -> None:
+        """合并的后台健康循环：每 5s 探活一次，复用同一次 evaluate
+        既作为 chrome idle keepalive，也作为浏览器/页面健康检查。
+        """
         while self.connected:
             await asyncio.sleep(self._keepalive_interval)
-            try:
-                if self._context and self._context.pages:
-                    page = self._context.pages[0]
-                    await page.evaluate("() => Date.now()", timeout=3000)
-                    self._last_health_check = now_ms()
-            except Exception:
-                # 浏览器可能已崩溃，标记为断开
+            ok = await self._probe_alive()
+            if not ok:
+                # 浏览器可能已崩溃，标记为断开，让上层重连
                 self.connected = False
                 break
+
+    # 向后兼容别名（任何外部 references 仍可用 _keepalive_loop）
+    async def _keepalive_loop(self) -> None:
+        await self._health_loop()
 
     async def _reconnect(self) -> bool:
         """快速重连"""
@@ -221,7 +244,6 @@ class BinanceSession:
         for attempt in range(3):
             if await self.connect():
                 return True
-            import asyncio
             await asyncio.sleep(1)
         return False
 
@@ -727,8 +749,20 @@ class BinanceSession:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    async def _apply_cookies_to_context(self) -> None:
+    async def _apply_cookies_to_context(self, force: bool = False) -> None:
         if not self._context or not self.cookie_path.exists():
+            return
+        # mtime cache：cookie 文件未变就跳过 add_cookies，节省百毫秒级
+        try:
+            mtime = self.cookie_path.stat().st_mtime
+        except OSError:
+            mtime = None
+        if (
+            not force
+            and mtime is not None
+            and self._page_cookie_mtime is not None
+            and mtime <= self._page_cookie_mtime
+        ):
             return
         cookies_data = json.loads(self.cookie_path.read_text(encoding="utf-8-sig"))
         if isinstance(cookies_data, dict) and "cookies" in cookies_data:
@@ -770,6 +804,8 @@ class BinanceSession:
             browser_cookies.append(cookie)
         if browser_cookies:
             await self._context.add_cookies(browser_cookies)
+        if mtime is not None:
+            self._page_cookie_mtime = mtime
 
     async def fetch_position_history_from_page(
         self,
@@ -863,7 +899,11 @@ class BinanceSession:
             if not self._session_initialized:
                 try:
                     await page.goto(f"{self.api_base}/zh-CN/futures/BTCUSDT", wait_until="domcontentloaded", timeout=15000)
-                    await page.wait_for_timeout(2000)
+                    # one-time session warmup; rely on network idle rather than fixed 2s
+                    try:
+                        await page.wait_for_load_state("networkidle", timeout=2000)
+                    except Exception:
+                        pass
                     self._session_initialized = True
                 except Exception:
                     pass
@@ -881,20 +921,24 @@ class BinanceSession:
                 except Exception:
                     pass
 
-            await page.wait_for_timeout(500)
+            # Wait for tab bar to attach (cap 1s) instead of fixed 500ms.
+            try:
+                await page.wait_for_selector(".bn-tab", state="attached", timeout=1000)
+            except Exception:
+                pass
             try:
                 tab_labels = ["持有仓位", "当前仓位", "仓位", "持仓", "Positions", "Current Positions"]
                 for label in tab_labels:
                     tab = page.locator(".bn-tab", has_text=label)
                     if await tab.count() > 0:
                         await tab.first.click()
-                        await page.wait_for_timeout(800)  # 增加等待时间让数据加载
+                        # Cap data-load wait at 300ms; downstream wait_for_function will gate further.
+                        await page.wait_for_timeout(300)
                         break
             except Exception:
                 pass
             try:
                 await page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
-                await page.wait_for_timeout(300)
             except Exception:
                 pass
 
@@ -908,7 +952,6 @@ class BinanceSession:
                             tab = page.locator(".bn-tab", has_text=label)
                             if await tab.count() > 0:
                                 await tab.first.click()
-                                await page.wait_for_timeout(150)
                                 break
                     resp = await response_info.value
                     positions_payload = await resp.json()
@@ -1080,14 +1123,13 @@ class BinanceSession:
                     }
 
             # 执行 DOM 抓取脚本 - 基于页面文本解析仓位数据
-            # 先等待页面内容加载
-            await page.wait_for_timeout(2000)
-
-            # 尝试等待页面上出现关键元素
+            # Replace fixed 2s wait with selector-driven readiness; cap total to ~3s worst case.
             try:
-                await page.wait_for_selector("body", timeout=5000)
-                # 等待页面内容出现
-                await page.wait_for_function("() => document.body.innerText.length > 100", timeout=10000)
+                await page.wait_for_selector("body", timeout=3000)
+                await page.wait_for_function(
+                    "() => document.body.innerText.length > 100",
+                    timeout=3000,
+                )
             except Exception:
                 pass
 
