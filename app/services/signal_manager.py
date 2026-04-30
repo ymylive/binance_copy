@@ -252,7 +252,7 @@ def parse_signal(text: str, config: SignalConfig) -> Optional[ParsedSignal]:
 def _parse_symbol(text: str) -> str:
     pairs = ("USDT", "BUSD", "USDC", "USD")
     for quote in pairs:
-        match = re.search(rf"\\b([A-Z]{{2,10}})\\s*[-/]?\\s*{quote}\\b", text, re.IGNORECASE)
+        match = re.search(rf"\b([A-Z]{{2,10}})\s*[-/]?\s*{quote}\b", text, re.IGNORECASE)
         if match:
             base = match.group(1).upper()
             return f"{base}{quote}"
@@ -261,21 +261,21 @@ def _parse_symbol(text: str) -> str:
 
 def _parse_side(text: str) -> tuple[str, str]:
     lowered = text.lower()
-    if "long" in lowered or re.search(r"\\bbuy\\b", lowered):
+    if "long" in lowered or re.search(r"\bbuy\b", lowered):
         return "BUY", "LONG"
-    if "short" in lowered or re.search(r"\\bsell\\b", lowered):
+    if "short" in lowered or re.search(r"\bsell\b", lowered):
         return "SELL", "SHORT"
     return "", ""
 
 
 def _parse_leverage(text: str) -> Optional[float]:
-    match = re.search(r"(\\d{1,3})\\s*x", text, re.IGNORECASE)
+    match = re.search(r"(\d{1,3})\s*x", text, re.IGNORECASE)
     if match:
         try:
             return float(match.group(1))
         except ValueError:
             return None
-    match = re.search(r"leverage\\s*[:=]?\\s*(\\d{1,3})", text, re.IGNORECASE)
+    match = re.search(r"leverage\s*[:=]?\s*(\d{1,3})", text, re.IGNORECASE)
     if match:
         try:
             return float(match.group(1))
@@ -285,13 +285,13 @@ def _parse_leverage(text: str) -> Optional[float]:
 
 
 def _parse_notional(text: str) -> Optional[float]:
-    match = re.search(r"(\\d+(?:\\.\\d+)?)\\s*(usdt|usd|\\$)\\b", text, re.IGNORECASE)
+    match = re.search(r"(\d+(?:\.\d+)?)\s*(usdt|usd|\$)\b", text, re.IGNORECASE)
     if match:
         try:
             return float(match.group(1))
         except ValueError:
             return None
-    match = re.search(r"(?:size|amount)\\s*[:=]?\\s*(\\d+(?:\\.\\d+)?)", text, re.IGNORECASE)
+    match = re.search(r"(?:size|amount)\s*[:=]?\s*(\d+(?:\.\d+)?)", text, re.IGNORECASE)
     if match:
         try:
             return float(match.group(1))

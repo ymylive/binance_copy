@@ -99,11 +99,87 @@ class OKXAccountRuntime:
     inst_info_ms: int = 0
 
 
+_OKX_DEFAULT_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+_OKX_DEFAULT_LIMITS = httpx.Limits(max_keepalive_connections=20, max_connections=50)
+_OKX_INSTRUMENT_TTL_MS = 60 * 60 * 1000  # 1h cache for instrument metadata
+
+
 class OKXExecutor:
     """OKX交易执行器"""
 
     def __init__(self) -> None:
         self._runtime: Dict[str, OKXAccountRuntime] = {}
+        self._client: httpx.AsyncClient = httpx.AsyncClient(
+            timeout=_OKX_DEFAULT_TIMEOUT,
+            limits=_OKX_DEFAULT_LIMITS,
+        )
+        self._clients: Dict[str, httpx.AsyncClient] = {}
+        self._config_cache: Optional[Tuple[OKXTradeConfig, float]] = None
+
+    def _get_client(self, account: OKXTradeAccount) -> httpx.AsyncClient:
+        base = (account.base_url or "").rstrip("/")
+        if not base:
+            return self._client
+        existing = self._clients.get(base)
+        if existing is not None:
+            return existing
+        client = httpx.AsyncClient(timeout=_OKX_DEFAULT_TIMEOUT, limits=_OKX_DEFAULT_LIMITS)
+        self._clients[base] = client
+        return client
+
+    async def aclose(self) -> None:
+        try:
+            await self._client.aclose()
+        except Exception:
+            pass
+        for client in list(self._clients.values()):
+            try:
+                await client.aclose()
+            except Exception:
+                pass
+        self._clients.clear()
+
+    async def _get_instrument(
+        self,
+        account: OKXTradeAccount,
+        inst_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch (and cache 1h) SWAP instrument metadata: ctVal/lotSz/minSz/tickSz."""
+        runtime = self._get_runtime(account.account_id)
+        cached = runtime.inst_info_cache.get(inst_id)
+        if cached and (now_ms() - runtime.inst_info_ms) < _OKX_INSTRUMENT_TTL_MS:
+            return cached
+        path = "/api/v5/public/instruments"
+        params = {"instType": "SWAP", "instId": inst_id}
+        url = f"{account.base_url.rstrip('/')}{path}"
+        timeout = account.timeout_ms / 1000.0
+        try:
+            client = self._get_client(account)
+            resp = await client.get(url, params=params, timeout=timeout)
+            data = resp.json()
+        except Exception as exc:
+            logger.warning("okx instrument fetch failed inst_id=%s err=%s", inst_id, exc)
+            return cached
+        if not isinstance(data, dict) or data.get("code") != "0":
+            return cached
+        items = data.get("data") or []
+        if not items:
+            return cached
+        info = items[0]
+        runtime.inst_info_cache[inst_id] = info
+        runtime.inst_info_ms = now_ms()
+        return info
+
+    @staticmethod
+    def _quantize_lot(value: float, lot: float, mode: str = "floor") -> float:
+        if lot <= 0:
+            return value
+        ratio = value / lot
+        if mode == "ceil":
+            ratio = math.ceil(ratio - 1e-12)
+        else:
+            ratio = math.floor(ratio + 1e-12)
+        return ratio * lot
 
     def _config_enabled(self, config: OKXTradeConfig) -> bool:
         if config.enabled:
@@ -198,11 +274,11 @@ class OKXExecutor:
         url = f"{account.base_url.rstrip('/')}{path_with_query}"
         timeout = account.timeout_ms / 1000.0
 
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            if method.upper() == "GET":
-                resp = await client.get(url, headers=headers)
-            else:
-                resp = await client.post(url, headers=headers, content=body_str)
+        client = self._get_client(account)
+        if method.upper() == "GET":
+            resp = await client.get(url, headers=headers, timeout=timeout)
+        else:
+            resp = await client.post(url, headers=headers, content=body_str, timeout=timeout)
         return resp.json()
 
 
@@ -255,8 +331,8 @@ class OKXExecutor:
         timeout = account.timeout_ms / 1000.0
 
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.post(url, headers=headers, content=body)
+            client = self._get_client(account)
+            resp = await client.post(url, headers=headers, content=body, timeout=timeout)
             data = resp.json()
 
             if data.get("code") == "0":
@@ -301,8 +377,8 @@ class OKXExecutor:
         timeout = account.timeout_ms / 1000.0
 
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.get(url, headers=headers)
+            client = self._get_client(account)
+            resp = await client.get(url, headers=headers, timeout=timeout)
             data = resp.json()
 
             if data.get("code") != "0":
@@ -375,8 +451,8 @@ class OKXExecutor:
         timeout = account.timeout_ms / 1000.0
 
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.get(url, headers=headers)
+            client = self._get_client(account)
+            resp = await client.get(url, headers=headers, timeout=timeout)
             data = resp.json()
 
             if data.get("code") == "0":
@@ -557,9 +633,41 @@ class OKXExecutor:
             await self._set_leverage(account, runtime, inst_id, leverage, pos_side)
 
         # 构建订单
-        qty = abs(event.follower_qty)
-        if qty <= 0:
+        coin_qty = abs(event.follower_qty)
+        if coin_qty <= 0:
             return {"status": "skipped", "event_id": event.event_id, "note": "zero_qty"}
+
+        # OKX SWAP `sz` is in CONTRACTS, not coins. Convert via ctVal and quantize by lotSz.
+        contracts = coin_qty
+        instrument = await self._get_instrument(account, inst_id)
+        if instrument:
+            try:
+                ct_val = float(instrument.get("ctVal") or 0)
+                lot_sz = float(instrument.get("lotSz") or 0)
+                min_sz = float(instrument.get("minSz") or 0)
+            except (TypeError, ValueError):
+                ct_val = lot_sz = min_sz = 0.0
+            if ct_val > 0:
+                # Reduce: ceil so the dust closes; open: floor to avoid over-sizing.
+                quantize_mode = "ceil" if event.reduce_only else "floor"
+                contracts = self._quantize_lot(coin_qty / ct_val, lot_sz, quantize_mode)
+                if min_sz > 0 and contracts < min_sz:
+                    if event.reduce_only:
+                        contracts = min_sz
+                    else:
+                        return {
+                            "status": "skipped",
+                            "event_id": event.event_id,
+                            "note": "below_min_sz",
+                        }
+        else:
+            logger.warning(
+                "okx instrument metadata missing inst_id=%s; sending raw coin qty (may be wrong unit)",
+                inst_id,
+            )
+
+        if contracts <= 0:
+            return {"status": "skipped", "event_id": event.event_id, "note": "zero_contracts"}
 
         timestamp = self._get_timestamp()
         path = "/api/v5/trade/order"
@@ -569,15 +677,18 @@ class OKXExecutor:
             "tdMode": "cross",  # 全仓模式
             "side": side,
             "ordType": "market",
-            "sz": str(qty),
+            "sz": str(contracts),
         }
 
         # 双向持仓模式
-        if pos_side in ("long", "short"):
+        hedge_pos_side = pos_side in ("long", "short")
+        if hedge_pos_side:
             body_dict["posSide"] = pos_side
 
-        # 平仓模式
-        if event.reduce_only:
+        # OKX rule: reduceOnly is only valid in NET (one-way) mode. In hedge mode
+        # (posSide=long/short) the side+posSide already implies reduce semantics
+        # and reduceOnly will be rejected with code 51000/51020.
+        if event.reduce_only and not hedge_pos_side:
             body_dict["reduceOnly"] = True
 
         body = json.dumps(body_dict)
@@ -586,8 +697,8 @@ class OKXExecutor:
         timeout = account.timeout_ms / 1000.0
 
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.post(url, headers=headers, content=body)
+            client = self._get_client(account)
+            resp = await client.post(url, headers=headers, content=body, timeout=timeout)
 
             executed_at = now_ms()
             event.executed_at = executed_at
@@ -596,10 +707,11 @@ class OKXExecutor:
 
             data = resp.json()
             logger.info(
-                "OKX order executed instId=%s side=%s qty=%.8f latency=%dms event_id=%s",
+                "OKX order executed instId=%s side=%s coin_qty=%.8f contracts=%.8f latency=%dms event_id=%s",
                 inst_id,
                 side,
-                qty,
+                coin_qty,
+                contracts,
                 event.latency_ms or 0,
                 event.event_id,
             )

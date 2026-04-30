@@ -263,6 +263,7 @@ class PositionMonitor:
             old_positions=state.leader_current_positions,
             new_positions=confirmed_positions,
             leader_now_ms=leader_now_ms,
+            leader_equity=leader_equity,
         )
 
         # Update state
@@ -332,6 +333,7 @@ class PositionMonitor:
         old_positions: Dict[str, Dict[str, Any]],
         new_positions: Dict[str, Dict[str, Any]],
         leader_now_ms: int,
+        leader_equity: float = 0.0,
     ) -> None:
         """Detect position size changes and generate add/reduce events"""
         from .event_generator import EventGenerator

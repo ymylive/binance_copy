@@ -17,5 +17,12 @@ class Executor:
     ) -> Optional[Dict[str, float]]:
         return None
 
-    async def get_follower_positions(self, account_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_follower_positions(
+        self,
+        account_id: Optional[str] = None,
+        force_refresh: bool = False,
+    ) -> List[Dict[str, Any]]:
         return []
+
+    async def aclose(self) -> None:
+        return None

@@ -21,6 +21,10 @@ from .base import Executor
 logger = get_logger()
 MARGIN_TOLERANCE_USDT = 1.0
 
+# Default timeout used when no per-account override is available.
+_DEFAULT_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+_DEFAULT_LIMITS = httpx.Limits(max_keepalive_connections=20, max_connections=50)
+
 
 def load_trade_config() -> TradeConfig:
     if TRADE_CONFIG_PATH.exists():
@@ -119,6 +123,14 @@ class AccountRuntime:
 class ApiExecutor(Executor):
     def __init__(self) -> None:
         self._runtime: Dict[str, AccountRuntime] = {}
+        # Shared HTTP client(s). One default + per base_url cache for multi-account.
+        self._client: httpx.AsyncClient = httpx.AsyncClient(
+            timeout=_DEFAULT_TIMEOUT,
+            limits=_DEFAULT_LIMITS,
+        )
+        self._clients: Dict[str, httpx.AsyncClient] = {}
+        # trade_config.json is hot-reloaded by mtime instead of every call.
+        self._config_cache: Optional[Tuple[TradeConfig, float]] = None
 
     def _config_enabled(self, config: TradeConfig) -> bool:
         if config.enabled:
@@ -126,7 +138,41 @@ class ApiExecutor(Executor):
         return any(account.enabled for account in config.accounts)
 
     def _load_trade_config(self) -> TradeConfig:
-        return load_trade_config()
+        try:
+            mtime = TRADE_CONFIG_PATH.stat().st_mtime if TRADE_CONFIG_PATH.exists() else 0.0
+        except OSError:
+            mtime = 0.0
+        cached = self._config_cache
+        if cached is not None and cached[1] == mtime:
+            return cached[0]
+        config = load_trade_config()
+        self._config_cache = (config, mtime)
+        return config
+
+    def _get_client(self, account: TradeAccount) -> httpx.AsyncClient:
+        """Return a shared AsyncClient. Per-base_url isolation when needed."""
+        base = (account.base_url or "").rstrip("/")
+        if not base:
+            return self._client
+        existing = self._clients.get(base)
+        if existing is not None:
+            return existing
+        # Reuse the default client when no special base; otherwise create cached client.
+        client = httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, limits=_DEFAULT_LIMITS)
+        self._clients[base] = client
+        return client
+
+    async def aclose(self) -> None:
+        try:
+            await self._client.aclose()
+        except Exception:
+            pass
+        for client in list(self._clients.values()):
+            try:
+                await client.aclose()
+            except Exception:
+                pass
+        self._clients.clear()
 
     def _resolve_account(
         self,
@@ -183,8 +229,8 @@ class ApiExecutor(Executor):
             return runtime.symbol_filters
         url = f"{account.base_url.rstrip('/')}/fapi/v1/exchangeInfo"
         timeout = account.timeout_ms / 1000.0
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(url)
+        client = self._get_client(account)
+        resp = await client.get(url, timeout=timeout)
         if not resp.is_success:
             return runtime.symbol_filters
         data = resp.json()
@@ -228,18 +274,17 @@ class ApiExecutor(Executor):
             return cached[0]
         timeout = account.timeout_ms / 1000.0
         price = 0.0
+        client = self._get_client(account)
         if price_source in {"mark", "index"}:
             url = f"{account.base_url.rstrip('/')}/fapi/v1/premiumIndex?symbol={symbol}"
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.get(url)
+            resp = await client.get(url, timeout=timeout)
             if resp.is_success:
                 data = resp.json()
                 field = "markPrice" if price_source == "mark" else "indexPrice"
                 price = float(data.get(field) or 0.0)
         if price <= 0:
             url = f"{account.base_url.rstrip('/')}/fapi/v1/ticker/price?symbol={symbol}"
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.get(url)
+            resp = await client.get(url, timeout=timeout)
             if resp.is_success:
                 data = resp.json()
                 price = float(data.get("price") or 0.0)
@@ -272,8 +317,8 @@ class ApiExecutor(Executor):
         url = f"{account.base_url.rstrip('/')}/fapi/v1/positionSide/dual"
         headers = {"X-MBX-APIKEY": account.api_key}
         timeout = account.timeout_ms / 1000.0
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(url, params=signed_params, headers=headers)
+        client = self._get_client(account)
+        resp = await client.get(url, params=signed_params, headers=headers, timeout=timeout)
         if resp.is_success:
             data = resp.json()
             mode = bool(data.get("dualSidePosition"))
@@ -321,8 +366,8 @@ class ApiExecutor(Executor):
         url = f"{account.base_url.rstrip('/')}/fapi/v1/leverage"
         headers = {"X-MBX-APIKEY": account.api_key}
         timeout = account.timeout_ms / 1000.0
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(url, params=signed_params, headers=headers)
+        client = self._get_client(account)
+        resp = await client.post(url, params=signed_params, headers=headers, timeout=timeout)
         data = None
         try:
             data = resp.json()
@@ -402,7 +447,13 @@ class ApiExecutor(Executor):
                 else:
                     qty = ceil_qty
             else:
-                mode = "ceil" if bumped_up else "floor"
+                # close/reduce: ceil so reduceOnly closes the dust; Binance will cap at
+                # actual position. floor would leave a residual that future reduceOnly
+                # rejects as below_min_notional, leaking exposure.
+                if reduce_only:
+                    mode = "ceil"
+                else:
+                    mode = "ceil" if bumped_up else "floor"
                 qty = self._quantize_step(qty, step_size, mode)
 
         if min_qty > 0 and qty < min_qty:
@@ -464,8 +515,8 @@ class ApiExecutor(Executor):
             return
         url = f"{account.base_url.rstrip('/')}/fapi/v1/time"
         timeout = account.timeout_ms / 1000.0
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(url)
+        client = self._get_client(account)
+        resp = await client.get(url, timeout=timeout)
         if resp.is_success:
             data = resp.json()
             server_time = int(data.get("serverTime") or 0)
@@ -508,8 +559,8 @@ class ApiExecutor(Executor):
         url = f"{account.base_url.rstrip('/')}/fapi/v2/account"
         headers = {"X-MBX-APIKEY": account.api_key}
         timeout = account.timeout_ms / 1000.0
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(url, params=signed_params, headers=headers)
+        client = self._get_client(account)
+        resp = await client.get(url, params=signed_params, headers=headers, timeout=timeout)
         if not resp.is_success:
             return None
         data = resp.json()
@@ -551,8 +602,8 @@ class ApiExecutor(Executor):
         url = f"{account.base_url.rstrip('/')}/fapi/v2/account"
         headers = {"X-MBX-APIKEY": account.api_key}
         timeout = account.timeout_ms / 1000.0
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(url, params=signed_params, headers=headers)
+        client = self._get_client(account)
+        resp = await client.get(url, params=signed_params, headers=headers, timeout=timeout)
         if not resp.is_success:
             return cached_value
         data = resp.json()
@@ -573,6 +624,7 @@ class ApiExecutor(Executor):
     async def get_follower_positions(
         self,
         account_id: Optional[str] = None,
+        force_refresh: bool = False,
     ) -> List[Dict[str, Any]]:
         config = self._load_trade_config()
         if not self._config_enabled(config):
@@ -585,7 +637,7 @@ class ApiExecutor(Executor):
         runtime = self._get_runtime(account.account_id)
         now = now_ms()
         cached_items, cached_ms = runtime.positions_cache
-        if cached_items and now - cached_ms < 2000:
+        if not force_refresh and cached_items and now - cached_ms < 2000:
             return cached_items
         await self._sync_time(account, runtime)
         timestamp = now_ms() + runtime.time_offset_ms
@@ -599,8 +651,8 @@ class ApiExecutor(Executor):
         url = f"{account.base_url.rstrip('/')}/fapi/v2/positionRisk"
         headers = {"X-MBX-APIKEY": account.api_key}
         timeout = account.timeout_ms / 1000.0
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(url, params=signed_params, headers=headers)
+        client = self._get_client(account)
+        resp = await client.get(url, params=signed_params, headers=headers, timeout=timeout)
         if not resp.is_success:
             return cached_items
         data = resp.json()
@@ -628,6 +680,7 @@ class ApiExecutor(Executor):
         position_side: Optional[str],
         side: Optional[str],
         reduce_only: bool,
+        position_mode: Optional[bool] = None,
     ) -> Tuple[Optional[float], Optional[str]]:
         items = await self.get_follower_positions(account.account_id)
         if not items:
@@ -670,6 +723,17 @@ class ApiExecutor(Executor):
             pos_side, amt = next(iter(positions.items()))
             return amt, pos_side
 
+        # B5: In hedge mode with both LONG+SHORT held, do NOT guess direction;
+        # caller must supply position_side explicitly to avoid catastrophic
+        # mis-close that flips direction.
+        if position_mode is True and (not wanted or wanted == "BOTH"):
+            logger.warning(
+                "ambiguous reduce in hedge mode symbol=%s positions=%s; skipping",
+                symbol,
+                list(positions.keys()),
+            )
+            return None, None
+
         side = (side or "").upper()
         inferred = ""
         if reduce_only:
@@ -702,6 +766,9 @@ class ApiExecutor(Executor):
         if event.action in {"reduce", "close"}:
             event.reduce_only = True
 
+        # Detect position mode early so reduce resolution can refuse ambiguous hedge cases.
+        position_mode = await self._get_position_mode(account, runtime)
+
         qty = abs(event.follower_qty)
         price_for_adjust = event.avg_price
         if event.reduce_only and event.action in {"reduce", "close"}:
@@ -712,6 +779,7 @@ class ApiExecutor(Executor):
                 event.position_side,
                 event.side,
                 event.reduce_only,
+                position_mode=position_mode,
             )
             if position_amt is None:
                 return {"status": "skipped", "event_id": event.event_id, "note": "no_position"}
@@ -800,9 +868,13 @@ class ApiExecutor(Executor):
             "quantity": self._format_qty(adjusted_qty),
             "timestamp": timestamp,
         }
+        hedge_position_side = bool(send_position_side and event.position_side and event.position_side.upper() in ("LONG", "SHORT"))
         if send_position_side and event.position_side:
             params["positionSide"] = event.position_side
-        if event.reduce_only:
+        # Binance forbids reduceOnly + positionSide=LONG/SHORT in hedge mode (-1106/-4061).
+        # In hedge mode the side+positionSide implies reduce semantics; reduceOnly is only
+        # legal in one-way (BOTH) mode.
+        if event.reduce_only and not hedge_position_side:
             params["reduceOnly"] = "true"
         if account.recv_window:
             params["recvWindow"] = account.recv_window
@@ -814,8 +886,8 @@ class ApiExecutor(Executor):
         headers = {"X-MBX-APIKEY": account.api_key}
         signed_params = ordered + [("signature", signature)]
         timeout = account.timeout_ms / 1000.0
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(url, params=signed_params, headers=headers)
+        client = self._get_client(account)
+        resp = await client.post(url, params=signed_params, headers=headers, timeout=timeout)
         executed_at = now_ms()
         event.executed_at = executed_at
         binance_time = event.order_update_time or event.order_time
@@ -830,4 +902,9 @@ class ApiExecutor(Executor):
             event.latency_ms or 0,
             event.event_id,
         )
+        # Invalidate cached positions so the next poller cycle does not re-issue the same diff.
+        try:
+            await self.get_follower_positions(account.account_id, force_refresh=True)
+        except Exception:
+            runtime.positions_cache = ([], 0)
         return {"status": "sent", "event_id": event.event_id, "response": json.dumps(response)}
