@@ -4,7 +4,7 @@ import asyncio
 import json
 import sys
 sys.path.insert(0, '.')
-from app.binance import BinanceSession
+from app.exchanges.binance import BinanceSession
 
 async def test():
     client = BinanceSession(
