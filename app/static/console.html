@@ -1100,7 +1100,55 @@
   };
   const verbForm = { open: "opened", add: "added to", reduce: "reduced", close: "closed" };
 
-  /* ---- mock data ---- */
+  /* ---- shape adapters: backend → v6 leader/signal shape ---- */
+  const AVATAR_PALETTE = ["av-blue","av-orange","av-purple","av-pink","av-green","av-teal","av-indigo","av-gray"];
+  function hashCode(s) {
+    let h = 0;
+    s = String(s || "");
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  }
+  function adaptLeader(b) {
+    const av = AVATAR_PALETTE[hashCode(b.leader_id) % AVATAR_PALETTE.length];
+    return {
+      id: b.leader_id,
+      account_id: b.account_id,
+      name: b.name || b.leader_id,
+      initials: (b.name || "?").slice(0, 2).toUpperCase(),
+      av,
+      source: b.source,
+      state: b.state,
+      poll: b.avg_poll_latency_ms || b.last_poll_age_ms || 0,
+      exec_p50: 0,  // not in /api/leaders; lives in /api/health/poller per_leader
+      signals_24h: b.signals_24h || 0,
+      accuracy: b.mirror_accuracy_pct != null ? b.mirror_accuracy_pct / 100 : null,
+      deviation: b.deviation_pct != null ? b.deviation_pct : null,
+      positions_count: b.current_positions_count || 0,
+      positions: [],  // populated lazily via /sync
+      offline_reason: b.last_error || null,
+    };
+  }
+  function adaptSignal(s) {
+    const mirror = s.mirror_status === "sent"    ? "ok"
+                 : s.mirror_status === "failed"  ? "fail"
+                 : s.mirror_status === "skipped" ? "skip"
+                 : "pending";
+    return {
+      id: s.signal_id,
+      ts: s.detected_at_ms,
+      leader: s.leader_id,
+      action: s.leader_action,
+      symbol: s.symbol,
+      side: s.side === "BUY" ? "long" : "short",
+      qty_delta: s.leader_delta_qty || 0,
+      leverage: 0,  // not in mirror schema; rendered as "—"
+      mirror,
+      latency_ms: s.mirror_latency_ms || 0,
+      note: s.mirror_error || null,
+    };
+  }
+
+  /* ---- fallback mock data (used when backend unreachable) ---- */
   const NOW = Date.now();
   const ACCOUNTS = [
     { id: "BIN-ALPHA", name: "Binance Alpha", exchange: "binance", equity: 18432.55 },
@@ -1118,7 +1166,7 @@
     "project":     "Custom",
   };
 
-  const LEADERS = [
+  const FALLBACK_LEADERS = [
     { id:"lead_2f8a1c", name:"kingfisher",   av:"av-blue",   initials:"KF", source:"binance",     state:"live",    poll:187, exec_p50:240, signals_24h:23, accuracy:0.998, deviation:0.21,
       positions:[
         {symbol:"BTCUSDT",side:"long", leverage:10,qty:0.512,entry:67234.5,mark:67891.2,pnl:336.4},
@@ -1157,7 +1205,7 @@
       ]},
   ];
 
-  const MY_MIRROR = {
+  const FALLBACK_MY_MIRROR = {
     "lead_2f8a1c":[
       {symbol:"BTCUSDT",side:"long", leverage:10,qty:0.062,entry:67310.0},
       {symbol:"ETHUSDT",side:"short",leverage:5, qty:0.420,entry:3520.5},
@@ -1188,7 +1236,7 @@
     ],
   };
 
-  const HISTORY = [
+  const FALLBACK_HISTORY = [
     { off:-8,    leader:"lead_2f8a1c",action:"add",   symbol:"SOLUSDT",  side:"long", qty_delta:+1.5,   leverage:20,mirror:"ok",  latency_ms:218 },
     { off:-34,   leader:"lead_e5b9d4",action:"open",  symbol:"BNBUSDT",  side:"long", qty_delta:+2.4,   leverage:10,mirror:"ok",  latency_ms:264 },
     { off:-71,   leader:"lead_72c8b0",action:"reduce",symbol:"OPUSDT",   side:"long", qty_delta:-40.0,  leverage:8, mirror:"ok",  latency_ms:198 },
@@ -1225,16 +1273,20 @@
   };
 
   /* ---- pieces ---- */
-  function Topbar({ openPalette, leaders, signals, openTokenModal }) {
-    const live = leaders.filter(l => l.state === "live").length;
+  function Topbar({ openPalette, leaders, signals, health, openTokenModal }) {
+    const liveLocal  = leaders.filter(l => l.state === "live").length;
+    const total      = health ? health.leaders_total : leaders.length;
+    const live       = health ? health.leaders_live  : liveLocal;
+    const pollMs     = health ? Math.round(health.global_avg_poll_latency_ms || 0) : null;
     const ok = signals.filter(s => s.mirror === "ok").length;
-    const acc = signals.length ? (ok / signals.length * 100).toFixed(1) : "99.2";
+    const total_decided = signals.filter(s => s.mirror === "ok" || s.mirror === "fail").length;
+    const acc = total_decided ? (ok / total_decided * 100).toFixed(1) : "—";
     return (
       <div className="topbar">
         <div className="brand">
           <div className="brand-mark">CS</div>
           <span className="brand-name">Copy Sync</span>
-          <span className="brand-sub">v0.4 · multi-source · auth</span>
+          <span className="brand-sub">v0.5 · live API</span>
         </div>
         <button className="topbar-search" onClick={openPalette}>
           <I.Search/>
@@ -1244,13 +1296,13 @@
         </button>
         <div className="topbar-right">
           <span className="topbar-metric">
-            <span>{live}/{leaders.length}</span><span className="sep">·</span>
-            <span className="v green">streaming</span>
+            <span>{live}/{total}</span><span className="sep">·</span>
+            <span className={`v ${live > 0 ? "green" : ""}`}>{health && !health.poller_running ? "stopped" : "streaming"}</span>
           </span>
           <span className="topbar-metric">
-            <span>poll</span><span className="v">187ms</span>
+            <span>poll</span><span className="v">{pollMs == null ? "—" : pollMs + "ms"}</span>
             <span className="sep">·</span>
-            <span>mirror</span><span className="v green">{acc}%</span>
+            <span>mirror</span><span className={`v ${acc !== "—" && parseFloat(acc) >= 95 ? "green" : ""}`}>{acc === "—" ? "—" : acc + "%"}</span>
           </span>
           <button className="icon-btn" onClick={openTokenModal} title="API token / settings" aria-label="Open token settings">
             <I.Cog/>
@@ -1310,9 +1362,10 @@
     const accCls = leader.accuracy === null ? "dim"
                  : leader.accuracy > 0.995 ? "green"
                  : leader.accuracy > 0.985 ? "warn" : "bad";
+    const posCount = leader.positions_count != null ? leader.positions_count : (leader.positions ? leader.positions.length : 0);
     const sub = leader.state === "offline"
       ? `${SOURCE_LABEL[leader.source] || leader.source} · ${leader.offline_reason ? leader.offline_reason.replace(/_/g," ") : "offline"}`
-      : `${SOURCE_LABEL[leader.source] || leader.source} · ${leader.signals_24h} signals · ${leader.poll}ms`;
+      : `${SOURCE_LABEL[leader.source] || leader.source} · ${posCount} positions · ${leader.signals_24h} signals · ${leader.poll}ms`;
     return (
       <div className={`channel ${leader.state === "offline" ? "offline" : ""}`} onClick={() => onClick(leader.id)}>
         <div className={`ch-avatar ${leader.av}`}>
@@ -1431,7 +1484,7 @@
             <span className={`verb ${s.action}`}>{verbForm[s.action] || s.action}</span>
             <span className="sym">{s.symbol.replace("USDT","")}</span>
             <span className={s.side === "long" ? "side-l" : "side-s"}>{s.side === "long" ? "L" : "S"}</span>
-            <span className="lev">×{s.leverage}</span>
+            <span className="lev">{s.leverage > 0 ? `×${s.leverage}` : "—"}</span>
           </div>
           <div className="signal-l2">
             {s.mirror === "ok"   && <span className="ok">mirrored</span>}
@@ -1472,18 +1525,40 @@
   }
 
   function Detail({ leader, signals, onBack }) {
-    const my = MY_MIRROR[leader.id] || [];
-    const allSyms = Array.from(new Set([...leader.positions.map(p=>p.symbol), ...my.map(p=>p.symbol)]));
-    const rows = allSyms.map(sym => {
-      const lp = leader.positions.find(p=>p.symbol === sym) || null;
-      const mp = my.find(p=>p.symbol === sym) || null;
-      let status = "ok";
-      if (!lp || !mp) status = "miss";
-      else if (lp.side !== mp.side) status = "diff";
-      return { sym, lp, mp, status };
-    });
+    const [syncData, setSyncData] = useState(null);
+    const [syncErr,  setSyncErr]  = useState(null);
+    const [syncLoading, setSyncLoading] = useState(false);
+
+    useEffect(() => {
+      if (!leader) return;
+      let cancelled = false;
+      setSyncLoading(true); setSyncErr(null);
+      (async () => {
+        try {
+          const qs = leader.account_id ? `?account_id=${encodeURIComponent(leader.account_id)}` : "";
+          const data = await api(`/api/leaders/${encodeURIComponent(leader.id)}/sync${qs}`);
+          if (!cancelled) { setSyncData(data); setSyncLoading(false); }
+        } catch (err) {
+          if (!cancelled) {
+            setSyncErr(err.message || "sync fetch failed");
+            setSyncData(null);
+            setSyncLoading(false);
+          }
+        }
+      })();
+      return () => { cancelled = true; };
+    }, [leader && leader.id]);
+
+    const rows = syncData && syncData.rows ? syncData.rows : [];
+    const summary = syncData && syncData.summary ? syncData.summary : null;
     const drift = (leader.deviation || 0) / 100;
-    const leaderSignals = signals.filter(s => s.leader === leader.id).slice(0, 12);
+    const accuracy = summary && summary.accuracy_pct != null
+      ? summary.accuracy_pct / 100
+      : leader.accuracy;
+    const leaderPosCount = rows.filter(r => Number(r.leader_qty) !== 0).length;
+    const myPosCount     = rows.filter(r => Number(r.my_qty) !== 0).length;
+    const leaderSignals  = signals.filter(s => s.leader === leader.id).slice(0, 12);
+    const lastSynced     = syncData && syncData.computed_at_ms ? fmtRelative(syncData.computed_at_ms) : "—";
     return (
       <div className="detail">
         <span className="detail-back" onClick={onBack}>
@@ -1496,62 +1571,69 @@
           </div>
           <div>
             <div className="dh-name">{leader.name}</div>
-            <div className="dh-sub">{SOURCE_LABEL[leader.source]} · {leader.signals_24h} signals last 24h · {leader.poll}ms poll</div>
+            <div className="dh-sub">{SOURCE_LABEL[leader.source] || leader.source} · {leader.signals_24h} signals last 24h · {leader.poll}ms poll</div>
           </div>
           <div className="dh-stats">
-            <div className="dh-stat"><div className="k">accuracy</div><div className="v green">{leader.accuracy === null ? "—" : (leader.accuracy*100).toFixed(1) + "%"}</div></div>
-            <div className="dh-stat"><div className="k">drift</div><div className="v">{leader.deviation === null ? "—" : leader.deviation.toFixed(2) + "%"}</div></div>
-            <div className="dh-stat"><div className="k">exec p50</div><div className="v">{leader.exec_p50}ms</div></div>
+            <div className="dh-stat"><div className="k">accuracy</div><div className="v green">{accuracy == null ? "—" : (accuracy*100).toFixed(1) + "%"}</div></div>
+            <div className="dh-stat"><div className="k">drift</div><div className="v">{leader.deviation == null ? "—" : leader.deviation.toFixed(2) + "%"}</div></div>
+            <div className="dh-stat"><div className="k">exec p50</div><div className="v">{leader.exec_p50 ? leader.exec_p50 + "ms" : "—"}</div></div>
           </div>
         </div>
+
+        {syncErr && <div className="api-banner">Sync fetch failed: {syncErr}</div>}
 
         <div className="compare">
           <div className="compare-card">
             <div className="compare-head">
               <span className="label l">Leader · live</span>
-              <span className="badge">{leader.positions.length} positions</span>
+              <span className="badge">{leaderPosCount} positions</span>
             </div>
             <table className="pos-table">
-              <thead><tr><th>Symbol</th><th>Side</th><th>Lev</th><th>Qty</th><th>Entry</th><th>Mark</th></tr></thead>
+              <thead><tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Notional</th></tr></thead>
               <tbody>
-                {leader.positions.length === 0
-                  ? <tr><td colSpan="6" style={{textAlign:'center',color:'var(--label-3)',padding:14}}>— no open positions</td></tr>
-                  : leader.positions.map(p => (
-                    <tr key={p.symbol}>
-                      <td>{p.symbol.replace("USDT","")}<span className="symquote">USDT</span></td>
-                      <td className={`r ${p.side === "long" ? "side-l" : "side-s"}`}>{p.side.toUpperCase()}</td>
-                      <td className="r">×{p.leverage}</td>
-                      <td className="r">{fmt(p.qty, p.qty < 1 ? 4 : 2)}</td>
-                      <td className="r" style={{color:'var(--label-3)'}}>{fmt(p.entry, p.entry < 10 ? 4 : 2)}</td>
-                      <td className="r">{fmt(p.mark, p.mark < 10 ? 4 : 2)}</td>
-                    </tr>
-                  ))
+                {syncLoading
+                  ? <tr><td colSpan="4" style={{textAlign:'center',color:'var(--label-3)',padding:14}}>— loading…</td></tr>
+                  : rows.length === 0
+                    ? <tr><td colSpan="4" style={{textAlign:'center',color:'var(--label-3)',padding:14}}>— no open positions</td></tr>
+                    : rows.map(p => (
+                      <tr key={p.symbol + ":" + p.position_side}>
+                        <td>{p.symbol.replace("USDT","")}<span className="symquote">USDT</span></td>
+                        <td className={`r ${p.position_side === "LONG" ? "side-l" : "side-s"}`}>{p.position_side}</td>
+                        <td className="r">{fmt(p.leader_qty, Math.abs(p.leader_qty) < 1 ? 4 : 2)}</td>
+                        <td className="r" style={{color:'var(--label-3)'}}>{fmt(p.leader_notional_usd, 0)}</td>
+                      </tr>
+                    ))
                 }
               </tbody>
             </table>
           </div>
           <div className="compare-card">
             <div className="compare-head">
-              <span className="label r">My mirror · {ACCOUNTS[0].name}</span>
-              <span className="badge">{my.length} positions</span>
+              <span className="label r">My mirror · {leader.account_id || ACCOUNTS[0].name}</span>
+              <span className="badge">{myPosCount} positions</span>
             </div>
             <table className="pos-table">
-              <thead><tr><th>Symbol</th><th>Side</th><th>Lev</th><th>Qty</th><th>Entry</th><th>Sync</th></tr></thead>
+              <thead><tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Δ%</th><th>Sync</th></tr></thead>
               <tbody>
-                {rows.length === 0
-                  ? <tr><td colSpan="6" style={{textAlign:'center',color:'var(--label-3)',padding:14}}>— nothing mirrored</td></tr>
-                  : rows.map(({ sym, mp, status }) => (
-                    <tr key={sym} className={status === "ok" ? "" : status}>
-                      <td>{sym.replace("USDT","")}<span className="symquote">USDT</span></td>
-                      <td className={`r ${mp ? (mp.side === "long" ? "side-l" : "side-s") : ""}`}>{mp ? mp.side.toUpperCase() : "—"}</td>
-                      <td className="r">{mp ? `×${mp.leverage}` : "—"}</td>
-                      <td className="r">{mp ? fmt(mp.qty, mp.qty < 1 ? 4 : 2) : "—"}</td>
-                      <td className="r" style={{color:'var(--label-3)'}}>{mp ? fmt(mp.entry, mp.entry < 10 ? 4 : 2) : "—"}</td>
-                      <td className="r" style={{color: status === "ok" ? "var(--green)" : status === "diff" ? "var(--orange)" : "var(--red)"}}>
-                        {status === "ok" ? "in sync" : status === "diff" ? "drift" : "missing"}
-                      </td>
-                    </tr>
-                  ))
+                {syncLoading
+                  ? <tr><td colSpan="5" style={{textAlign:'center',color:'var(--label-3)',padding:14}}>— loading…</td></tr>
+                  : rows.length === 0
+                    ? <tr><td colSpan="5" style={{textAlign:'center',color:'var(--label-3)',padding:14}}>— nothing mirrored</td></tr>
+                    : rows.map(p => {
+                      const status = p.deviation_status || "ok";
+                      const cls = status === "ok" ? "" : status === "drift" ? "diff" : "miss";
+                      const color = status === "ok" ? "var(--green)" : status === "drift" ? "var(--orange)" : "var(--red)";
+                      const label = status === "ok" ? "in sync" : status;
+                      return (
+                        <tr key={p.symbol + ":" + p.position_side} className={cls}>
+                          <td>{p.symbol.replace("USDT","")}<span className="symquote">USDT</span></td>
+                          <td className={`r ${p.position_side === "LONG" ? "side-l" : "side-s"}`}>{Number(p.my_qty) !== 0 ? p.position_side : "—"}</td>
+                          <td className="r">{Number(p.my_qty) !== 0 ? fmt(p.my_qty, Math.abs(p.my_qty) < 1 ? 4 : 2) : "—"}</td>
+                          <td className="r" style={{color:'var(--label-3)'}}>{p.deviation_pct == null ? "—" : p.deviation_pct.toFixed(2) + "%"}</td>
+                          <td className="r" style={{color}}>{label}</td>
+                        </tr>
+                      );
+                    })
                 }
               </tbody>
             </table>
@@ -1561,8 +1643,13 @@
         <div className="deviation">
           <span className="label">Mirror is currently <em style={{color: drift<0.01?"var(--green)":drift<0.02?"var(--orange)":"var(--red)"}}>{drift<0.005?"in sync":drift<0.01?"drifting slightly":"out of sync"}</em>.</span>
           <span className="stat"><span className="k">drift</span>{(drift*100).toFixed(2)}%</span>
-          <span className="stat"><span className="k">size ratio</span>{my.length > 0 ? "0.090" : "—"}</span>
-          <span className="stat"><span className="k">last synced</span>{leader.state === "offline" ? "—" : "1.2s"}</span>
+          {summary && <>
+            <span className="stat"><span className="k">in sync</span>{summary.in_sync}</span>
+            <span className="stat"><span className="k">drift rows</span>{summary.drift}</span>
+            <span className="stat"><span className="k">missing</span>{summary.missing}</span>
+            <span className="stat"><span className="k">extra</span>{summary.extra}</span>
+          </>}
+          <span className="stat"><span className="k">last synced</span>{leader.state === "offline" ? "—" : lastSynced}</span>
         </div>
 
         <div className="recent">
@@ -1751,62 +1838,98 @@
     const [paused, setPaused]               = useState(false);
     const [paletteOpen, setPaletteOpen]     = useState(false);
     const [importOpen, setImportOpen]       = useState(false);
-    const [signals, setSignals]             = useState(HISTORY);
-    const [leaders]                          = useState(LEADERS);
+    const [signals, setSignals]             = useState([]);
+    const [leaders, setLeaders]              = useState([]);
+    const [health, setHealth]                = useState(null);
+    const [loading, setLoading]              = useState(true);
+    const [bootError, setBootError]          = useState(null);
+    const [usingFallback, setUsingFallback]  = useState(false);
     const [tokenModalOpen, setTokenModalOpen] = useState(false);
     const [hasToken, setHasToken]            = useState(() => !!getToken());
-    const [apiError, setApiError]            = useState(null);
     const leadersById = useMemo(()=>Object.fromEntries(leaders.map(l=>[l.id,l])),[leaders]);
 
-    // mount-time token check + future fetch hook
+    // boot fetch — leaders / signals / health in parallel
     useEffect(() => {
       if (!getToken()) {
         setTokenModalOpen(true);
+        setLoading(false);
         return;
       }
-      // TODO Phase 2: replace mock with real fetches.
-      // Round 2 endpoints (pending backend):
-      //   const leaders  = await api("/api/leaders");
-      //   const signals  = await api("/api/signals?limit=80");
-      //   const sse      = new EventSource("/api/signals/stream?token=" + getToken());
-      // For now, keep LEADERS / HISTORY mocks intact.
-    }, []);
+      let cancelled = false;
+      (async () => {
+        try {
+          const [leadersData, signalsData, healthData] = await Promise.all([
+            api("/api/leaders"),
+            api("/api/signals?limit=80"),
+            api("/api/health/poller"),
+          ]);
+          if (cancelled) return;
+          setLeaders(Array.isArray(leadersData) ? leadersData.map(adaptLeader) : []);
+          setSignals(Array.isArray(signalsData) ? signalsData.map(adaptSignal) : []);
+          setHealth(healthData || null);
+          setBootError(null);
+          setUsingFallback(false);
+          setLoading(false);
+        } catch (err) {
+          if (cancelled) return;
+          if (err.code === 401) {
+            setTokenModalOpen(true);
+            setBootError("auth");
+          } else {
+            console.warn("[copy-sync] boot fetch failed, using fallback mock:", err);
+            setBootError(err.message || "unknown");
+            // surface mock so UI is still navigable
+            setLeaders(FALLBACK_LEADERS.map(l => ({ ...l, positions_count: l.positions.length })));
+            const histAdapted = FALLBACK_HISTORY.map((s,i)=>({ ...s, id: s.id || ("sig_fb_" + i) }));
+            setSignals(histAdapted);
+            setUsingFallback(true);
+          }
+          setLoading(false);
+        }
+      })();
+      return () => { cancelled = true; };
+    }, [hasToken]);
 
     // keep hasToken in sync with the modal
     useEffect(() => {
       if (!tokenModalOpen) setHasToken(!!getToken());
     }, [tokenModalOpen]);
 
-    // banner copy for fetch failures (infrastructure ready, no real fetch yet)
-    const errorBanner = apiError === 401
-      ? "Session expired. Click settings to update token."
-      : (apiError && apiError >= 500) ? "Backend unreachable."
-      : null;
-
+    // SSE realtime — replaces the old mock setInterval generator
     useEffect(() => {
-      if (paused) return;
-      const id = setInterval(() => {
-        const live = leaders.filter(l => l.state !== "offline");
-        const leader = live[Math.floor(Math.random() * live.length)];
-        const symbol = leader.positions.length > 0 && Math.random() < 0.6
-          ? leader.positions[Math.floor(Math.random() * leader.positions.length)].symbol
-          : SYMS[Math.floor(Math.random() * SYMS.length)];
-        const action = ACTS[Math.floor(Math.random() * ACTS.length)];
-        const side = SIDES_W[Math.floor(Math.random() * SIDES_W.length)];
-        const leverage = [3,5,8,10,15,20][Math.floor(Math.random()*6)];
-        const mirror = Math.random() < 0.94 ? "ok" : Math.random() < 0.5 ? "skip" : "fail";
-        const latency_ms = mirror === "ok" ? 180 + Math.floor(Math.random() * 280) : 0;
-        const sig = {
-          id: "sig_live_" + Date.now(), ts: Date.now(),
-          leader: leader.id,
-          action, symbol, side, qty_delta: 0.05, leverage,
-          mirror, latency_ms,
-          note: mirror === "skip" ? "below_min_notional" : mirror === "fail" ? "auth_error" : null,
-        };
-        setSignals(s => [sig, ...s].slice(0, 60));
-      }, 5000);
-      return () => clearInterval(id);
-    }, [paused, leaders]);
+      if (paused || !getToken() || usingFallback) return;
+      const url = `/api/signals/stream?token=${encodeURIComponent(getToken())}`;
+      let es;
+      try { es = new EventSource(url); }
+      catch (e) { console.warn("[copy-sync] EventSource ctor failed:", e); return; }
+      const onSignal = (e) => {
+        try {
+          const sig = JSON.parse(e.data);
+          setSignals(prev => {
+            const adapted = adaptSignal(sig);
+            // dedupe by id (server may resend on reconnect)
+            const filtered = prev.filter(p => p.id !== adapted.id);
+            return [adapted, ...filtered].slice(0, 80);
+          });
+        } catch (err) {
+          console.warn("[copy-sync] bad SSE payload:", err);
+        }
+      };
+      es.addEventListener("signal", onSignal);
+      es.onerror = () => {
+        // EventSource auto-reconnects; only log
+        console.warn("[copy-sync] SSE error, browser will retry");
+      };
+      return () => { es.removeEventListener("signal", onSignal); es.close(); };
+    }, [paused, hasToken, usingFallback]);
+
+    // banner copy
+    let errorBanner = null;
+    if (bootError === "auth") {
+      errorBanner = "Session expired. Click settings to update token.";
+    } else if (bootError) {
+      errorBanner = `Backend unreachable: ${bootError}. Showing cached data.`;
+    }
 
     useEffect(() => {
       const onKey = (e) => {
@@ -1826,7 +1949,7 @@
     return (
       <div className="app">
         <Topbar openPalette={()=>setPaletteOpen(true)}
-                leaders={leaders} signals={signals}
+                leaders={leaders} signals={signals} health={health}
                 openTokenModal={()=>setTokenModalOpen(true)}/>
         {errorBanner && <div className="api-banner">{errorBanner}</div>}
         <div className="main">
