@@ -8,6 +8,7 @@ runtime/
 data/
 .chrome-debug/
 .chrome-debug-visible/
+.worktrees/
 tmpclaude-*
 _tmp_*
 nul
