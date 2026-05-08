@@ -4,6 +4,7 @@ import json
 import os
 import re
 import secrets
+import urllib.parse
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Literal, Optional
 
@@ -904,20 +905,23 @@ async def list_projects() -> List[Dict[str, object]]:
         # ProjectConfig schema is NOT changed; everything here is derived
         # from existing config + live poller state.
         leader_id = payload.get("leader_id") or payload.get("portfolio_id") or ""
-        payload["display_name"] = (
-            payload.get("alias") or (str(leader_id)[:8] if leader_id else "Anon")
-        )
+        # ProjectConfig has no `alias` field (extra="ignore" strips unknowns),
+        # so display_name is always derived from leader_id; do not re-add an
+        # alias lookup without first extending the schema.
+        payload["display_name"] = str(leader_id)[:8] if leader_id else "Anon"
+        # NOTE: dicebear is an external dep by design (see plan); leader_id is
+        # URL-quoted so unusual ids (`&`, `?`, `#`, whitespace) cannot break
+        # the URL silently.
         payload["avatar_url"] = (
-            f"https://api.dicebear.com/7.x/identicon/svg?seed={leader_id}"
+            f"https://api.dicebear.com/7.x/identicon/svg?seed={urllib.parse.quote(str(leader_id), safe='')}"
             if leader_id
             else ""
         )
-        try:
-            hist = state.poller.equity_history(payload["project_id"], limit=30)
-        except (AttributeError, KeyError):
-            hist = []
+        hist = state.poller.equity_history(payload["project_id"], limit=30)
         sparkline = [float(p) for p in hist] if hist else []
         payload["sparkline"] = sparkline
+        # sparkline[0] truthiness check is defense-in-depth: equity_history
+        # already filters zero samples, but a 0.0 base would div-by-zero.
         if len(sparkline) >= 2 and sparkline[0]:
             base = sparkline[0]
             payload["total_pnl_pct"] = round(

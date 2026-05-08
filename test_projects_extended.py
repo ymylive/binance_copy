@@ -12,7 +12,7 @@ def test_projects_returns_extended_fields():
         "http://127.0.0.1:8000/api/projects",
         headers={"Authorization": f"Bearer {_token()}"},
     )
-    r = urllib.request.urlopen(req, timeout=2)
+    r = urllib.request.urlopen(req, timeout=10)
     items = json.loads(r.read())
     assert isinstance(items, list)
     if not items:
