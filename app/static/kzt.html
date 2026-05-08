@@ -491,7 +491,67 @@
           </button>
         </div>
 
-        <div class="gq-table-wrap">
+        <!-- pill tabs: one per bound account -->
+        <div class="gq-acct-tabs" id="acctTabs">
+          <div class="gq-empty" style="padding:12px 0">加载账户中…</div>
+        </div>
+
+        <!-- single-account hero card -->
+        <div class="gq-acct-card" id="acctHero" style="display:none;">
+          <div class="gq-acct-row">
+            <span class="gq-text-3">当前账户类型：</span>
+            <strong class="label" id="acctAlias">--</strong>
+            <span class="gq-text-3" style="margin-left:32px;">激活</span>
+            <label class="gq-switch">
+              <input type="checkbox" id="acctActive" disabled>
+              <span class="gq-switch__track"></span>
+            </label>
+          </div>
+          <div class="gq-acct-row">
+            <span class="gq-text-3">IP地址：</span>
+            <span class="ip" id="acctIps">--</span>
+          </div>
+          <div class="gq-acct-row">
+            <span class="gq-text-3">交易所：</span>
+            <strong class="label" id="acctExchange">--</strong>
+            <span class="gq-text-3" style="margin-left:32px;">UID：</span>
+            <strong class="label" id="acctUid">--</strong>
+          </div>
+          <div class="gq-acct-row">
+            <span class="gq-text-3">合约账户：</span>
+            <strong class="label" id="acctFutures">--</strong>
+            <span class="gq-text-3" style="margin-left:24px;">账户总资产：</span>
+            <strong class="label" id="acctTotal">--</strong>
+            <div class="gq-spacer"></div>
+            <div class="gq-acct-actions" style="margin:0;">
+              <button class="gq-btn gq-btn--ghost gq-btn--sm" disabled>修改杠杆</button>
+              <button class="gq-btn gq-btn--primary gq-btn--sm" disabled>编辑Apikey</button>
+              <button class="gq-btn gq-btn--danger gq-btn--sm" id="acctRemoveBtn">删除当前账户</button>
+            </div>
+          </div>
+          <div class="gq-acct-keys">
+            <span class="gq-text-3">API Key:</span> <span id="acctApiKey">--</span>
+            <span class="gq-text-3" style="margin-left:24px;">Secret Key:</span> <span id="acctSecKey">--</span>
+          </div>
+        </div>
+
+        <!-- 30-day equity curve card -->
+        <div class="gq-chart-card" id="acctEquityWrap" style="display:none;">
+          <div class="gq-chart-card__head">
+            <span class="gq-chart-card__title">收益曲线</span>
+            <span class="gq-chart-card__sub" id="acctEquitySummary"></span>
+            <div class="gq-chart-card__toolbar">
+              <button class="gq-tab-block is-active" type="button">收益曲线</button>
+              <button class="gq-tab-block" type="button" disabled>盈亏日历</button>
+            </div>
+          </div>
+          <div class="gq-chart-canvas-wrap-lg">
+            <canvas id="acctEquityChart"></canvas>
+          </div>
+        </div>
+
+        <!-- legacy table fallback (kept as quick list of all accounts under hero) -->
+        <div class="gq-table-wrap" style="margin-top:var(--gq-gap);">
           <table class="gq-table">
             <thead>
               <tr>
@@ -1419,34 +1479,162 @@
   // ============================================================
   //  #accounts
   // ============================================================
+  let _acctChart = null;
+  let _acctCurrentBizId = null;
+
   async function loadAccounts() {
-    const body = document.getElementById("accountsBody");
+    const body  = document.getElementById("accountsBody");
+    const tabs  = document.getElementById("acctTabs");
+    const hero  = document.getElementById("acctHero");
+    const equiv = document.getElementById("acctEquityWrap");
+    if (hero)  hero.style.display = "none";
+    if (equiv) equiv.style.display = "none";
+    if (tabs)  tabs.innerHTML = `<div class="gq-empty" style="padding:12px 0">加载账户中…</div>`;
+
+    // ----- legacy table (admin scoped) -----
+    (async () => {
+      try {
+        const r = await api("/api/accounts");
+        const list = Array.isArray(r) ? r : (r.items || r.accounts || []);
+        if (!list.length) {
+          body.innerHTML = `<tr><td colspan="6" class="gq-empty">尚未绑定任何账户</td></tr>`;
+          return;
+        }
+        body.innerHTML = list.map(a => {
+          const enabled = !!(a.enabled ?? a.is_enabled ?? true);
+          const status = enabled
+            ? '<span class="gq-pill gq-pill--up">运行中</span>'
+            : '<span class="gq-pill gq-pill--neutral">已停用</span>';
+          return `<tr>
+            <td><strong>${fmt.esc(a.alias || a.account_id || "—")}</strong></td>
+            <td>${fmt.esc((a.exchange || "—").toUpperCase())}</td>
+            <td>${status}</td>
+            <td>${fmt.esc(fmt.ts(a.created_at || a.createdAt))}</td>
+            <td>${fmt.esc(fmt.ts(a.expires_at || a.expirationTimestamp))}</td>
+            <td style="text-align:right">
+              <button class="gq-btn gq-btn--ghost gq-btn--sm" onclick="toggleAccount('${fmt.esc(a.business_id || a.id || a.account_id)}', ${!enabled})">${enabled ? "停用" : "启用"}</button>
+              <button class="gq-btn gq-btn--danger gq-btn--sm" onclick="removeAccount('${fmt.esc(a.business_id || a.id || a.account_id)}')">删除</button>
+            </td>
+          </tr>`;
+        }).join("");
+      } catch (e) {
+        body.innerHTML = `<tr><td colspan="6" class="gq-empty">加载失败：${fmt.esc(e.message)}</td></tr>`;
+      }
+    })();
+
+    // ----- pill tabs + hero card (portal scoped via businesses) -----
+    if (!tabs) return;
     try {
-      const r = await api("/api/accounts");
-      const list = Array.isArray(r) ? r : (r.items || r.accounts || []);
-      if (!list.length) {
-        body.innerHTML = `<tr><td colspan="6" class="gq-empty">尚未绑定任何账户</td></tr>`;
+      const list = await api("/api/portal/account/businesses?effective=true") || [];
+      const arr = Array.isArray(list) ? list : (list.items || []);
+      if (!arr.length) {
+        tabs.innerHTML = `<div class="gq-empty" style="padding:12px 0">尚无账户，请先购买套餐绑定 API Key</div>`;
         return;
       }
-      body.innerHTML = list.map(a => {
-        const enabled = !!(a.enabled ?? a.is_enabled ?? true);
-        const status = enabled
-          ? '<span class="gq-pill gq-pill--up">运行中</span>'
-          : '<span class="gq-pill gq-pill--neutral">已停用</span>';
-        return `<tr>
-          <td><strong>${fmt.esc(a.alias || a.account_id || "—")}</strong></td>
-          <td>${fmt.esc((a.exchange || "—").toUpperCase())}</td>
-          <td>${status}</td>
-          <td>${fmt.esc(fmt.ts(a.created_at || a.createdAt))}</td>
-          <td>${fmt.esc(fmt.ts(a.expires_at || a.expirationTimestamp))}</td>
-          <td style="text-align:right">
-            <button class="gq-btn gq-btn--ghost gq-btn--sm" onclick="toggleAccount('${fmt.esc(a.business_id || a.id || a.account_id)}', ${!enabled})">${enabled ? "停用" : "启用"}</button>
-            <button class="gq-btn gq-btn--danger gq-btn--sm" onclick="removeAccount('${fmt.esc(a.business_id || a.id || a.account_id)}')">删除</button>
-          </td>
-        </tr>`;
+      tabs.innerHTML = arr.map((b, i) => {
+        const bizId = b.id || b.businessId || b.business_id || "";
+        const alias = b.alias || `账户${i + 1}(标准)`;
+        const isActive = (bizId === _acctCurrentBizId) || (i === 0 && !_acctCurrentBizId);
+        return `<button class="gq-acct-tab ${isActive ? "is-active" : ""}" data-biz="${fmt.esc(bizId)}" type="button">
+          ${fmt.esc(alias)}
+          <span class="gq-edit-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4z"/></svg>
+          </span>
+        </button>`;
       }).join("");
+      tabs.querySelectorAll("[data-biz]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          tabs.querySelectorAll("[data-biz]").forEach(b => b.classList.remove("is-active"));
+          btn.classList.add("is-active");
+          const id = btn.dataset.biz;
+          if (id) loadAccountDetail(id);
+        });
+      });
+      const initial = _acctCurrentBizId
+        || arr[0].id || arr[0].businessId || arr[0].business_id;
+      if (initial) loadAccountDetail(initial);
     } catch (e) {
-      body.innerHTML = `<tr><td colspan="6" class="gq-empty">加载失败：${fmt.esc(e.message)}</td></tr>`;
+      tabs.innerHTML = `<div class="gq-empty" style="padding:12px 0">加载失败：${fmt.esc(e.message)}</div>`;
+    }
+  }
+
+  async function loadAccountDetail(bizId) {
+    if (!bizId) return;
+    _acctCurrentBizId = bizId;
+    const hero  = document.getElementById("acctHero");
+    const equiv = document.getElementById("acctEquityWrap");
+    if (hero)  hero.style.display = "none";
+    if (equiv) equiv.style.display = "none";
+    try {
+      const d = await api(`/api/portal/account/${encodeURIComponent(bizId)}/detail`);
+      if (!d) return;
+      document.getElementById("acctAlias").textContent    = d.alias || "--";
+      document.getElementById("acctActive").checked       = !!d.active;
+      document.getElementById("acctIps").textContent      = (Array.isArray(d.ip_whitelist) && d.ip_whitelist.length) ? d.ip_whitelist.join(", ") : "--";
+      document.getElementById("acctExchange").textContent = d.exchange || "--";
+      document.getElementById("acctUid").textContent      = d.uid || "--";
+      document.getElementById("acctFutures").textContent  = (d.futures_balance == null ? "--" : d.futures_balance);
+      document.getElementById("acctTotal").textContent    = (d.total_assets    == null ? "--" : d.total_assets);
+      document.getElementById("acctApiKey").textContent   = d.api_key_masked    || "--";
+      document.getElementById("acctSecKey").textContent   = d.secret_key_masked || "--";
+      const removeBtn = document.getElementById("acctRemoveBtn");
+      if (removeBtn) removeBtn.onclick = () => removeAccount(bizId);
+      if (hero) hero.style.display = "";
+      if (Array.isArray(d.equity_30d) && d.equity_30d.length) {
+        if (equiv) equiv.style.display = "";
+        drawAcctEquityChart(d.equity_30d);
+      }
+    } catch (e) {
+      if (hero) {
+        hero.style.display = "";
+        const alias = document.getElementById("acctAlias");
+        if (alias) alias.textContent = "加载失败：" + e.message;
+      }
+    }
+  }
+
+  function drawAcctEquityChart(points) {
+    const canvas = document.getElementById("acctEquityChart");
+    if (!canvas || typeof Chart === "undefined") return;
+    const labels = points.map(p => {
+      const t = p.ts || p.t || p.time;
+      const d = t ? new Date(t) : null;
+      return d ? d.toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" }) : "";
+    });
+    const data = points.map(p => Number(p.equity ?? p.value ?? 0));
+    if (_acctChart) { _acctChart.destroy(); _acctChart = null; }
+    _acctChart = new Chart(canvas.getContext("2d"), {
+      type: "line",
+      data: {
+        labels,
+        datasets: [{
+          data,
+          borderColor: "rgb(58, 203, 190)",
+          backgroundColor: "rgba(58, 203, 190, 0.18)",
+          fill: true,
+          tension: 0.35,
+          pointRadius: 0,
+          borderWidth: 2,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: false, grid: { color: "rgba(0,0,0,0.05)" } },
+        },
+      },
+    });
+    const first = data[0] || 0, last = data[data.length - 1] || 0;
+    const pct = first ? ((last - first) / first * 100) : 0;
+    const sign = pct >= 0 ? "+" : "";
+    const el = document.getElementById("acctEquitySummary");
+    if (el) {
+      el.textContent = `(${sign}${pct.toFixed(2)}% 近 30 日)`;
+      el.classList.toggle("gq-up", pct >= 0);
+      el.classList.toggle("gq-down", pct < 0);
     }
   }
 
