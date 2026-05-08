@@ -1,0 +1,1925 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>控制台 · 银河量化</title>
+  <link rel="stylesheet" href="/static/galaxy-tokens.css?v=20260508-01" />
+  <link rel="icon" href="/favicon.ico" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    /* ===========================================================
+       Page-local glue: only what's not in galaxy-tokens.css.
+       Keep this minimal — no color literals beyond tokens.
+       =========================================================== */
+    html, body { margin: 0; padding: 0; }
+    body { font-family: var(--gq-sans); background: var(--gq-bg); color: var(--gq-text); }
+
+    /* Page switching */
+    .gq-page { display: none; }
+    .gq-page.is-active { display: block; }
+    .gq-page-head {
+      display: flex; align-items: center; gap: var(--gq-gap);
+      margin-bottom: var(--gq-gap);
+    }
+    .gq-page-head h2 {
+      font-size: var(--gq-text-xl); font-weight: var(--gq-fw-medium);
+      color: var(--gq-text); margin: 0;
+    }
+    .gq-spacer { flex: 1; }
+
+    /* Sidebar collapse for narrow screens */
+    @media (max-width: 768px) {
+      .gq-shell { grid-template-columns: 1fr; grid-template-areas: "top" "main"; }
+      .gq-sidebar { display: none; position: fixed; left: 0; top: 0; bottom: 0; width: var(--gq-sidebar-w); z-index: 200; box-shadow: var(--gq-shadow-hover); }
+      .gq-sidebar.is-open { display: flex; }
+      .gq-hamburger { display: inline-flex !important; }
+    }
+    .gq-hamburger {
+      display: none;
+      width: 32px; height: 32px;
+      align-items: center; justify-content: center;
+      background: transparent; border: 0; cursor: pointer;
+      color: var(--gq-text-2);
+    }
+
+    /* — Submenu chevron — */
+    .gq-menu-toggle { display: flex; align-items: center; gap: 12px; padding: 11px 14px; margin-bottom: 6px; border-radius: var(--gq-radius-menu); color: var(--gq-text); cursor: pointer; }
+    .gq-menu-toggle:hover { background: var(--gq-mint-soft); color: var(--gq-mint-dark); }
+    .gq-menu-toggle .gq-menu-icon { width: 18px; height: 18px; flex-shrink: 0; color: var(--gq-text-2); }
+    .gq-menu-toggle .gq-menu-icon svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.8; }
+    .gq-menu-toggle:hover .gq-menu-icon { color: var(--gq-mint-dark); }
+    .gq-menu-toggle .gq-chev { margin-left: auto; font-size: 10px; color: var(--gq-text-3); transition: transform .2s ease; }
+    .gq-menu-group.is-open > .gq-menu-toggle .gq-chev { transform: rotate(90deg); }
+    .gq-menu-group:not(.is-open) > .gq-submenu { display: none; }
+
+    /* — KPI grid — */
+    .gq-kpi-grid { margin-bottom: var(--gq-gap); }
+
+    /* — Dashboard middle row: chart on left + news on right — */
+    .gq-dash-row {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: var(--gq-gap);
+      margin-bottom: var(--gq-gap);
+    }
+    @media (max-width: 1100px) { .gq-dash-row { grid-template-columns: 1fr; } }
+
+    .gq-chart-empty { color: var(--gq-text-3); font-size: var(--gq-text-base); text-align: center; padding: 80px 12px; }
+    .gq-chart-canvas-wrap { position: relative; height: 220px; }
+
+    /* — News list — */
+    .gq-news-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+    .gq-news-item { display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--gq-line-3); }
+    .gq-news-item:last-child { border-bottom: none; }
+    .gq-news-thumb {
+      width: 56px; height: 56px; border-radius: var(--gq-radius-sm);
+      background: var(--gq-mint-soft); color: var(--gq-mint-dark);
+      display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .gq-news-body { flex: 1; min-width: 0; }
+    .gq-news-title { font-size: var(--gq-text-sm); color: var(--gq-text); font-weight: var(--gq-fw-medium); line-height: 1.4; }
+    .gq-news-summary { font-size: var(--gq-text-xs); color: var(--gq-text-3); line-height: 1.5; margin-top: 2px;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .gq-news-time { font-size: var(--gq-text-xs); color: var(--gq-text-4); margin-top: 4px; }
+
+    /* — Live signals strip — */
+    .gq-signals { background: var(--gq-card); border-radius: var(--gq-radius); box-shadow: var(--gq-shadow-card); padding: var(--gq-card-pad); margin-bottom: var(--gq-gap); }
+    .gq-signals-head { display: flex; align-items: center; gap: var(--gq-gap-sm); margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--gq-line-3); }
+    .gq-signals-meta { font-size: var(--gq-text-xs); color: var(--gq-text-3); margin-left: auto; }
+    .gq-signals-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--gq-mint); box-shadow: 0 0 0 0 rgba(58,203,190,0.4); animation: gq-pulse 2s infinite; }
+    @keyframes gq-pulse { 0% { box-shadow: 0 0 0 0 rgba(58,203,190,0.4); } 70% { box-shadow: 0 0 0 8px rgba(58,203,190,0); } 100% { box-shadow: 0 0 0 0 rgba(58,203,190,0); } }
+    .gq-signals-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0; }
+    .gq-sig { display: grid; grid-template-columns: 80px 60px 1fr 70px 70px 100px 1fr; gap: 12px; align-items: center; padding: 8px 0; font-size: var(--gq-text-sm); color: var(--gq-text); border-bottom: 1px solid var(--gq-line-3); }
+    .gq-sig:last-child { border-bottom: none; }
+    .gq-sig-time { color: var(--gq-text-3); font-family: var(--gq-mono); }
+    .gq-sig-badge { font-size: var(--gq-text-xs); padding: 2px 8px; border-radius: var(--gq-radius-xs); display: inline-block; text-align: center; }
+    .gq-sig-badge.auto { background: var(--gq-mint-soft); color: var(--gq-mint-dark); }
+    .gq-sig-badge.admin { background: var(--gq-warn-soft); color: var(--gq-warn); }
+    .gq-sig-pair { font-weight: var(--gq-fw-medium); }
+    .gq-sig-action { font-size: var(--gq-text-xs); padding: 2px 8px; border-radius: var(--gq-radius-xs); background: var(--gq-fill-light); color: var(--gq-text-2); text-align: center; }
+    .gq-sig-action.open { background: var(--gq-up-soft); color: var(--gq-up); }
+    .gq-sig-action.close { background: var(--gq-down-soft); color: var(--gq-down); }
+    .gq-sig-side.long { color: var(--gq-up); font-weight: var(--gq-fw-medium); }
+    .gq-sig-side.short { color: var(--gq-down); font-weight: var(--gq-fw-medium); }
+    .gq-sig-qty, .gq-sig-price { font-family: var(--gq-mono); color: var(--gq-text); }
+    .gq-sig-fresh { animation: gq-row-in 0.6s ease-out; }
+    @keyframes gq-row-in { from { background: var(--gq-mint-soft); } to { background: transparent; } }
+
+    /* — Market ticker grid (dashboard bottom) — */
+    .gq-ticker-strip { background: var(--gq-card); border-radius: var(--gq-radius); box-shadow: var(--gq-shadow-card); padding: var(--gq-card-pad); }
+    .gq-ticker-row { display: flex; align-items: center; gap: var(--gq-gap); padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--gq-line-3); flex-wrap: wrap; }
+    .gq-ticker-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; }
+    @media (max-width: 960px) { .gq-ticker-grid { grid-template-columns: repeat(2, 1fr); } }
+    .gq-ticker-cell { background: var(--gq-card); border: 1px solid var(--gq-line-3); border-radius: var(--gq-radius-sm); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+    .gq-ticker-tag { font-size: var(--gq-text-xs); color: var(--gq-mint-dark); font-weight: var(--gq-fw-medium); }
+    .gq-ticker-val { font-size: var(--gq-text-md); font-weight: var(--gq-fw-bold); color: var(--gq-text); font-family: var(--gq-mono); }
+    .gq-ticker-sub { font-size: var(--gq-text-xs); color: var(--gq-text-3); }
+    .gq-ticker-pair { display: flex; justify-content: space-between; font-size: var(--gq-text-xs); color: var(--gq-text-2); }
+    .gq-ticker-pair .pkey { color: var(--gq-text-3); }
+    .gq-ticker-pair .pval { font-family: var(--gq-mono); color: var(--gq-text); }
+    .gq-fg-bar { position: relative; height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--gq-down) 0%, var(--gq-warn) 50%, var(--gq-up) 100%); margin: 4px 0 4px; }
+    .gq-fg-marker { position: absolute; top: -3px; width: 12px; height: 12px; border-radius: 50%; background: var(--gq-card); border: 2px solid var(--gq-text); transform: translateX(-50%); }
+    .gq-ratio-bar { height: 6px; border-radius: 3px; background: var(--gq-down-soft); overflow: hidden; }
+    .gq-ratio-fill { height: 100%; background: var(--gq-up); }
+
+    /* — Account view (#accounts) — */
+    .gq-acct-tabs { display: flex; gap: var(--gq-gap-sm); flex-wrap: wrap; margin-bottom: var(--gq-gap); }
+    .gq-acct-tab { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; background: var(--gq-fill-extra); color: var(--gq-text-2); border-radius: var(--gq-radius-sm); border: 1px solid transparent; cursor: pointer; font-size: var(--gq-text-base); }
+    .gq-acct-tab:hover { background: var(--gq-mint-soft); color: var(--gq-mint-dark); }
+    .gq-acct-tab.is-active { background: var(--gq-mint); color: #fff; border-color: var(--gq-mint-3); }
+    .gq-acct-tab .gq-edit-icon { opacity: .8; }
+    .gq-acct-tab .gq-edit-icon svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+
+    .gq-acct-card { background: linear-gradient(135deg, var(--gq-mint-soft), var(--gq-card) 60%); border-radius: var(--gq-radius); padding: 20px; box-shadow: var(--gq-shadow-card); }
+    .gq-acct-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; font-size: var(--gq-text-sm); color: var(--gq-text-2); }
+    .gq-acct-row .label { color: var(--gq-text); font-weight: var(--gq-fw-medium); }
+    .gq-acct-row .ip { color: var(--gq-link); font-size: var(--gq-text-xs); }
+    .gq-acct-keys { font-size: var(--gq-text-xs); color: var(--gq-text-3); font-family: var(--gq-mono); margin-top: 12px; word-break: break-all; }
+    .gq-acct-actions { display: flex; gap: var(--gq-gap-sm); margin-top: 12px; justify-content: flex-end; flex-wrap: wrap; }
+
+    .gq-chart-card { background: var(--gq-card); border-radius: var(--gq-radius); padding: var(--gq-card-pad); box-shadow: var(--gq-shadow-card); margin-top: var(--gq-gap); }
+    .gq-chart-card__head { display: flex; align-items: center; gap: var(--gq-gap); margin-bottom: 12px; }
+    .gq-chart-card__title { font-size: var(--gq-text-md); font-weight: var(--gq-fw-medium); color: var(--gq-text); }
+    .gq-chart-card__sub { font-size: var(--gq-text-xs); color: var(--gq-text-3); }
+    .gq-chart-card__toolbar { margin-left: auto; display: flex; gap: 6px; }
+    .gq-chart-canvas-wrap-lg { position: relative; height: 280px; }
+
+    /* — Traders plaza (#projects) — */
+    .gq-plaza-banner { margin-bottom: var(--gq-gap); }
+    .gq-plaza-filters { display: flex; gap: var(--gq-gap-sm); margin-bottom: var(--gq-gap); flex-wrap: wrap; }
+    .gq-plaza-filter { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; background: var(--gq-fill-extra); color: var(--gq-text-2); border-radius: var(--gq-radius-sm); border: 1px solid var(--gq-line-3); cursor: pointer; font-size: var(--gq-text-sm); }
+    .gq-plaza-filter:hover { color: var(--gq-mint-dark); border-color: var(--gq-mint-3); }
+    .gq-plaza-filter.is-active { background: var(--gq-mint); color: #fff; border-color: var(--gq-mint); }
+
+    .gq-trader-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: var(--gq-gap); }
+    @media (max-width: 1100px) { .gq-trader-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 600px)  { .gq-trader-grid { grid-template-columns: 1fr; } }
+
+    .gq-trader-card { background: var(--gq-card); border-radius: var(--gq-radius); padding: 16px; box-shadow: var(--gq-shadow-card); display: flex; flex-direction: column; gap: 12px; }
+    .gq-trader-card__head { display: flex; align-items: center; gap: 10px; }
+    .gq-trader-ex-tag { background: var(--gq-fill-light); color: var(--gq-text-2); padding: 2px 8px; font-size: var(--gq-text-xs); border-radius: var(--gq-radius-xs); font-weight: var(--gq-fw-medium); }
+    .gq-trader-card__name { font-size: var(--gq-text-base); color: var(--gq-text); font-weight: var(--gq-fw-medium); margin-left: auto; }
+    .gq-trader-card__avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--gq-mint-soft); color: var(--gq-mint-dark); display: inline-flex; align-items: center; justify-content: center; font-weight: var(--gq-fw-bold); flex-shrink: 0; }
+    .gq-trader-card__spark { height: 64px; position: relative; }
+    .gq-trader-card__stats { display: flex; align-items: baseline; gap: 8px; }
+    .gq-trader-card__pnl { font-size: 20px; font-weight: var(--gq-fw-bold); }
+    .gq-trader-card__pnl.up { color: var(--gq-up); }
+    .gq-trader-card__pnl.down { color: var(--gq-down); }
+    .gq-trader-card__sub { font-size: var(--gq-text-xs); color: var(--gq-text-3); }
+    .gq-trader-card__foot { display: flex; align-items: center; gap: 8px; }
+    .gq-trader-card__foot .gq-spacer { flex: 1; }
+
+    /* — Positions (#history) — */
+    .gq-pos-head { display: flex; align-items: center; gap: var(--gq-gap); margin-bottom: var(--gq-gap); flex-wrap: wrap; }
+    .gq-pos-head .gq-select { width: 280px; }
+    .gq-pos-head .gq-pos-stat { font-size: var(--gq-text-sm); color: var(--gq-text-2); }
+    .gq-pos-head .gq-pos-stat strong { color: var(--gq-text); }
+
+    .gq-tabs-block { display: flex; gap: 0; align-items: flex-end; }
+    .gq-side-pills { margin-left: auto; display: flex; gap: 6px; }
+
+    /* — System (#system) — */
+    .gq-sys-section { margin-bottom: var(--gq-gap-lg); }
+    .gq-sys-section h3 { font-size: var(--gq-text-md); font-weight: var(--gq-fw-medium); color: var(--gq-text); margin: 0 0 var(--gq-gap); }
+    .gq-sys-row {
+      display: flex; align-items: center; gap: var(--gq-gap);
+      padding: 16px 20px; background: var(--gq-card); border: 1px solid var(--gq-line-3);
+      border-radius: var(--gq-radius); margin-bottom: 12px;
+    }
+    .gq-sys-row__icon { width: 40px; height: 40px; border-radius: var(--gq-radius-sm); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .gq-sys-row__icon.wechat { background: #07C160; color: #fff; }
+    .gq-sys-row__icon.telegram { background: #2AA0DC; color: #fff; }
+    .gq-sys-row__icon.email { background: #FF8A4C; color: #fff; }
+    .gq-sys-row__icon.sms { background: var(--gq-mint-soft); color: var(--gq-mint-dark); }
+    .gq-sys-row__icon svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+    .gq-sys-row__title { font-size: var(--gq-text-base); color: var(--gq-text); font-weight: var(--gq-fw-medium); }
+    .gq-sys-row__desc { font-size: var(--gq-text-xs); color: var(--gq-text-3); margin-top: 2px; }
+    .gq-sys-row__main { flex: 1; min-width: 0; }
+    .gq-sys-row__field { display: flex; align-items: center; gap: 12px; }
+    .gq-sys-row__field-label { font-size: var(--gq-text-sm); color: var(--gq-text-2); flex-shrink: 0; }
+    .gq-sys-row__input { flex: 1; max-width: 240px; }
+    .gq-sys-row__actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+    /* — Modal — */
+    .gq-modal-bg { display: none; }
+    .gq-modal-bg.is-open { display: flex; }
+    .gq-modal__row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .gq-modal__row label { width: 130px; flex-shrink: 0; font-size: var(--gq-text-sm); color: var(--gq-text-2); text-align: right; }
+    .gq-modal__row .gq-input,
+    .gq-modal__row .gq-select { flex: 1; }
+
+    /* — Toast — */
+    .gq-toast {
+      position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%) translateY(20px);
+      background: rgba(52, 64, 84, 0.95); color: #fff; padding: 10px 18px; border-radius: var(--gq-radius);
+      font-size: var(--gq-text-sm); opacity: 0; transition: opacity .2s ease, transform .2s ease;
+      z-index: 2000; pointer-events: none; box-shadow: var(--gq-shadow-light);
+    }
+    .gq-toast.is-show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* — Sidebar status footer — */
+    .gq-side-status { display: flex; align-items: center; gap: 8px; padding: 8px 14px; font-size: var(--gq-text-xs); color: var(--gq-text-3); }
+    .gq-status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gq-up); flex-shrink: 0; }
+    .gq-status-dot.idle { background: var(--gq-warn); }
+    .gq-status-dot.err { background: var(--gq-down); }
+
+    /* — Bell badge dot — */
+    .gq-icon-btn { position: relative; }
+    .gq-bell-dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; background: var(--gq-down); border-radius: 50%; border: 2px solid var(--gq-card); }
+
+    /* — Account avatar (topbar) — */
+    .gq-points-avatar.has-text { color: var(--gq-mint-dark); display: inline-flex; align-items: center; justify-content: center; font-weight: var(--gq-fw-bold); font-size: var(--gq-text-sm); background: var(--gq-mint-soft); }
+
+    /* — Pagination — */
+    .gq-pager { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 14px; }
+    .gq-pager-meta { font-size: var(--gq-text-xs); color: var(--gq-text-3); }
+  </style>
+</head>
+<body class="gq-app">
+  <div class="gq-shell">
+
+    <!-- =========================================================
+         SIDEBAR
+         ========================================================= -->
+    <aside class="gq-sidebar" id="kztSidebar">
+      <div class="gq-brand">
+        <div class="gq-brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M3 12c4 4 14 4 18 0"/>
+            <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none"/>
+          </svg>
+        </div>
+        <div class="gq-brand-text">
+          <span class="gq-brand-text-cn">银河量化</span>
+          <span class="gq-brand-text-en">GalaxyQuant</span>
+        </div>
+      </div>
+
+      <ul class="gq-menu" id="kztMenu">
+        <li>
+          <a href="#home" data-tab="home" class="gq-menu-item is-active">
+            <span class="gq-menu-icon">
+              <svg viewBox="0 0 24 24"><path d="M3 11 12 4l9 7"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/></svg>
+            </span>
+            <span>首页</span>
+          </a>
+        </li>
+        <li>
+          <a href="#accounts" data-tab="accounts" class="gq-menu-item">
+            <span class="gq-menu-icon">
+              <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><path d="M16 14h2"/></svg>
+            </span>
+            <span>账户管理</span>
+          </a>
+        </li>
+
+        <li>
+          <div class="gq-menu-group-title">智能跟单</div>
+        </li>
+        <li class="gq-menu-group" id="kztGroupCopy">
+          <div class="gq-menu-toggle" onclick="toggleGroup('kztGroupCopy')">
+            <span class="gq-menu-icon">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h6l2-4 4 8 2-4h4"/></svg>
+            </span>
+            <span>智能跟单</span>
+            <span class="gq-chev" aria-hidden="true">▶</span>
+          </div>
+          <ul class="gq-submenu">
+            <li data-view="traders-plaza"><a href="#traders-plaza" data-tab="traders-plaza" class="gq-menu-item">交易员广场</a></li>
+            <li data-view="exchange-watch"><a href="#exchange-watch" data-tab="exchange-watch" class="gq-menu-item">交易所自选</a></li>
+            <li data-view="coin-watch"><a href="#coin-watch" data-tab="coin-watch" class="gq-menu-item">币Coin自选</a></li>
+            <li data-view="positions"><a href="#positions" data-tab="positions" class="gq-menu-item">持仓详情</a></li>
+          </ul>
+        </li>
+      </ul>
+
+      <div class="gq-sidebar-footer">
+        <a href="#system" data-tab="system" class="gq-menu-item">
+          <span class="gq-menu-icon">
+            <svg viewBox="0 0 24 24" stroke-width="1.5">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </span>
+          <span>系统控制</span>
+        </a>
+        <div class="gq-side-status">
+          <span class="gq-status-dot" id="sideStatus"></span>
+          <span id="sideStatusText">系统运行正常</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- =========================================================
+         TOPBAR
+         ========================================================= -->
+    <header class="gq-topbar">
+      <div class="gq-topbar-left">
+        <button class="gq-hamburger" onclick="toggleSidebar()" aria-label="菜单">
+          <svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <span class="gq-greeting">Hello <span id="userName">—</span></span>
+      </div>
+      <div class="gq-topbar-right">
+        <button class="gq-icon-btn" title="设置" aria-label="设置">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button class="gq-icon-btn" title="通知" aria-label="通知">
+          <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="gq-bell-dot" id="bellDot" style="display:none"></span>
+        </button>
+        <span class="gq-svip-badge" id="userTier">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 9 12 3l6 6-6 12L6 9z"/></svg>
+          <span id="userTierLabel">SVIP</span>
+        </span>
+        <span class="gq-points">
+          <span class="gq-points-avatar has-text" id="userAvatar">G</span>
+          <span>积分: <strong id="userPoints">—</strong></span>
+        </span>
+      </div>
+    </header>
+
+    <!-- =========================================================
+         MAIN
+         ========================================================= -->
+    <main class="gq-main">
+
+      <!-- ============ #home Dashboard ============ -->
+      <section class="gq-page is-active" data-page="home">
+        <!-- KPI row -->
+        <div class="gq-kpi-grid">
+          <div class="gq-kpi-card">
+            <div class="gq-kpi-body">
+              <div class="gq-kpi-label">总资金</div>
+              <div class="gq-kpi-value">$<span id="statTotal">—</span><span class="gq-kpi-unit">USDT</span></div>
+            </div>
+            <div class="gq-kpi-icon">
+              <svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2.2"/><path d="M8 7V5.5A2.5 2.5 0 0 1 10.5 3h3A2.5 2.5 0 0 1 16 5.5V7"/><path d="M3 12h18"/></svg>
+            </div>
+          </div>
+          <div class="gq-kpi-card">
+            <div class="gq-kpi-body">
+              <div class="gq-kpi-label">账户数量</div>
+              <div class="gq-kpi-value"><span id="statAccounts">—</span><span class="gq-kpi-unit">个</span></div>
+            </div>
+            <div class="gq-kpi-icon">
+              <svg viewBox="0 0 24 24"><path d="M3 10 12 4l9 6"/><path d="M5 10v8M9 10v8M15 10v8M19 10v8"/><path d="M3 20h18"/></svg>
+            </div>
+          </div>
+          <div class="gq-kpi-card">
+            <div class="gq-kpi-body">
+              <div class="gq-kpi-label">累计盈亏</div>
+              <div class="gq-kpi-value"><span id="statPnl">—</span></div>
+              <div class="gq-kpi-unit" id="statPnlDelta"></div>
+            </div>
+            <div class="gq-kpi-icon">
+              <svg viewBox="0 0 24 24"><path d="M3 17 9 11l4 4 8-9"/><path d="M14 6h7v7"/></svg>
+            </div>
+          </div>
+          <div class="gq-kpi-card">
+            <div class="gq-kpi-body">
+              <div class="gq-kpi-label">今日盈亏</div>
+              <div class="gq-kpi-value"><span id="statDaily">—</span></div>
+              <div class="gq-kpi-unit" id="statDailyDelta"></div>
+            </div>
+            <div class="gq-kpi-icon">
+              <svg viewBox="0 0 24 24"><path d="M5 20V10"/><path d="M10 20V4"/><path d="M15 20v-8"/><path d="M20 20v-5"/><path d="M3 20h18"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chart + News row -->
+        <div class="gq-dash-row">
+          <div class="gq-chart-card">
+            <div class="gq-chart-card__head">
+              <div class="gq-chart-card__title">累计盈亏</div>
+              <div class="gq-chart-card__sub" id="curveRange">近 30 日</div>
+              <div class="gq-chart-card__toolbar">
+                <button class="gq-btn gq-btn--ghost gq-btn--sm">收益曲线</button>
+                <button class="gq-btn gq-btn--ghost gq-btn--sm">盈亏日历</button>
+              </div>
+            </div>
+            <div class="gq-chart-canvas-wrap-lg">
+              <canvas id="equityCurve"></canvas>
+            </div>
+          </div>
+          <div class="gq-card">
+            <div class="gq-chart-card__head" style="margin-bottom:12px">
+              <div class="gq-chart-card__title">公告</div>
+              <div class="gq-chart-card__sub" id="newsMeta">—</div>
+            </div>
+            <ul class="gq-news-list" id="newsList">
+              <li class="gq-empty">暂无公告</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Live signals strip -->
+        <section class="gq-signals" aria-label="实时信号">
+          <header class="gq-signals-head">
+            <span class="gq-pill gq-pill--info">实时信号</span>
+            <span class="gq-signals-meta" id="signalsMeta">—</span>
+            <span class="gq-signals-pulse" aria-hidden="true"></span>
+          </header>
+          <ol class="gq-signals-list" id="signalsList">
+            <li class="gq-empty">等待信号入流…</li>
+          </ol>
+        </section>
+
+        <!-- Market ticker strip -->
+        <div class="gq-ticker-strip">
+          <div class="gq-ticker-row">
+            <span class="gq-pill gq-pill--info">BTC 报价</span>
+            <span class="gq-ticker-val" id="btcPrice">—</span>
+            <span class="gq-pill gq-pill--down" id="btcChange">—</span>
+            <div class="gq-spacer"></div>
+            <span class="gq-ticker-sub">恐惧贪婪指数：<strong id="fgValue" style="color:var(--gq-text)">—</strong> · <span id="fgLabel">—</span></span>
+            <div style="width:160px;position:relative">
+              <div class="gq-fg-bar"><span class="gq-fg-marker" id="fgMarker" style="left:50%"></span></div>
+            </div>
+          </div>
+          <div class="gq-ticker-grid">
+            <div class="gq-ticker-cell">
+              <span class="gq-ticker-tag">爆仓数据</span>
+              <div class="gq-ticker-pair"><span class="pkey">24H</span><span class="pval" id="liq24h">—</span></div>
+              <div class="gq-ticker-pair"><span class="pkey">1H</span><span class="pval" id="liq1h">—</span></div>
+            </div>
+            <div class="gq-ticker-cell">
+              <span class="gq-ticker-tag">合约持仓</span>
+              <div class="gq-ticker-pair"><span class="pkey">OKX</span><span class="pval" id="oiOkx">—</span></div>
+              <div class="gq-ticker-pair"><span class="pkey">Binance</span><span class="pval" id="oiBinance">—</span></div>
+              <div class="gq-ticker-pair"><span class="pkey">Bitget</span><span class="pval" id="oiBitget">—</span></div>
+            </div>
+            <div class="gq-ticker-cell">
+              <span class="gq-ticker-tag">BTC 季度溢价</span>
+              <span class="gq-ticker-val" id="qPrem">—</span>
+              <span class="gq-ticker-sub">CME / 现货</span>
+            </div>
+            <div class="gq-ticker-cell">
+              <span class="gq-ticker-tag">多空比</span>
+              <div class="gq-ratio-bar" style="margin-top:4px"><div class="gq-ratio-fill" id="lsFill" style="width:50%"></div></div>
+              <span class="gq-ticker-sub" id="lsLabel">多 — : 空 —</span>
+            </div>
+            <div class="gq-ticker-cell">
+              <span class="gq-ticker-tag">USDT 溢价</span>
+              <span class="gq-ticker-val" id="usdtPrem">—</span>
+              <span class="gq-ticker-sub">场外 / 现货</span>
+            </div>
+            <div class="gq-ticker-cell">
+              <span class="gq-ticker-tag">资金费率</span>
+              <span class="gq-ticker-val" id="fundingRate">—</span>
+              <span class="gq-ticker-sub">下次结算 <span id="fundingTimer">—</span></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ #accounts 账户管理 ============ -->
+      <section class="gq-page" data-page="accounts">
+        <div class="gq-page-head">
+          <h2>账户管理</h2>
+          <div class="gq-spacer"></div>
+          <button class="gq-btn gq-btn--ghost" onclick="loadAccounts()">
+            <svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+            刷新
+          </button>
+          <button class="gq-btn gq-btn--primary" onclick="openBindModal()">
+            <svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            添加 API Key
+          </button>
+        </div>
+
+        <div class="gq-table-wrap">
+          <table class="gq-table">
+            <thead>
+              <tr>
+                <th>别名</th><th>交易所</th><th>状态</th><th>创建时间</th><th>到期时间</th>
+                <th style="text-align:right">操作</th>
+              </tr>
+            </thead>
+            <tbody id="accountsBody">
+              <tr><td colspan="6" class="gq-empty">尚未绑定任何账户</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============ #traders-plaza 交易员广场 ============ -->
+      <section class="gq-page" data-page="traders-plaza">
+        <div class="gq-page-head">
+          <h2>交易员广场</h2>
+          <div class="gq-spacer"></div>
+          <button class="gq-btn gq-btn--ghost" onclick="renderTradersPlaza()">
+            <svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+            刷新
+          </button>
+        </div>
+
+        <div class="gq-alert gq-alert--warn gq-plaza-banner">
+          <span class="gq-alert__icon">
+            <svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+          </span>
+          <div class="gq-alert__body">
+            请选择下单账户。本平台所列交易员均为微观博弈，并非投资建议。请在了解风险后审慎操作。
+          </div>
+        </div>
+
+        <div class="gq-plaza-filters" id="tpExchangeFilter">
+          <button type="button" class="gq-plaza-filter is-active" data-filter="all">全部</button>
+          <button type="button" class="gq-plaza-filter" data-filter="binance">Binance</button>
+          <button type="button" class="gq-plaza-filter" data-filter="okx">OKX</button>
+          <button type="button" class="gq-plaza-filter" data-filter="gate">Gate</button>
+          <button type="button" class="gq-plaza-filter" data-filter="bitget">Bitget</button>
+        </div>
+
+        <div class="gq-trader-grid" id="tpGrid">
+          <div class="gq-empty" style="grid-column:1/-1">加载中…</div>
+        </div>
+      </section>
+
+      <!-- ============ #exchange-watch 交易所自选 ============ -->
+      <section class="gq-page" data-page="exchange-watch">
+        <div class="gq-page-head">
+          <h2>交易所自选</h2>
+          <div class="gq-spacer"></div>
+          <button class="gq-btn gq-btn--ghost" onclick="renderExchangeWatch()">
+            <svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+            刷新
+          </button>
+        </div>
+
+        <div class="gq-table-wrap">
+          <table class="gq-table">
+            <thead>
+              <tr>
+                <th>交易所</th>
+                <th>交易员</th>
+                <th>状态</th>
+                <th style="text-align:right">操作</th>
+              </tr>
+            </thead>
+            <tbody id="exchangeWatchBody">
+              <tr><td colspan="4" class="gq-empty">暂无数据</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============ #coin-watch 币Coin自选 ============ -->
+      <section class="gq-page" data-page="coin-watch">
+        <div class="gq-page-head">
+          <h2>币Coin自选</h2>
+          <div class="gq-spacer"></div>
+          <button class="gq-btn gq-btn--ghost" onclick="renderCoinWatch()">
+            <svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+            刷新
+          </button>
+        </div>
+
+        <div class="gq-table-wrap">
+          <table class="gq-table">
+            <thead>
+              <tr>
+                <th>来源</th>
+                <th>地址或标识</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody id="coinWatchBody">
+              <tr><td colspan="3" class="gq-empty">暂无数据</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============ #positions 持仓详情 ============ -->
+      <section class="gq-page" data-page="positions">
+        <div class="gq-page-head">
+          <h2>持仓详情</h2>
+          <div class="gq-spacer"></div>
+          <button class="gq-btn gq-btn--ghost" onclick="renderPositions()">
+            <svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+            刷新
+          </button>
+        </div>
+
+        <!-- inner tabs (positions list / events / analytics) -->
+        <div class="gq-tabs-block" id="positionsInnerTabs">
+          <div class="gq-tab-block is-active" data-pos-tab="positions">持仓列表</div>
+          <div class="gq-tab-block" data-pos-tab="events">操作记录</div>
+          <div class="gq-tab-block" data-pos-tab="analysis">跟单分析</div>
+          <div class="gq-side-pills">
+            <span class="gq-pill gq-pill--up" id="posLongPill">多: —</span>
+            <span class="gq-pill gq-pill--down" id="posShortPill">空: —</span>
+          </div>
+        </div>
+
+        <div class="gq-table-wrap" id="posPanelPositions" style="border-radius: 0 var(--gq-radius) var(--gq-radius) var(--gq-radius)">
+          <table class="gq-table">
+            <thead>
+              <tr>
+                <th>交易对</th>
+                <th>数量(张)</th>
+                <th>开仓均价</th>
+                <th>标记价格</th>
+                <th>强平价格</th>
+                <th>保证金</th>
+                <th>保证金率</th>
+                <th>已实现盈亏</th>
+                <th>盈亏及回报率</th>
+              </tr>
+            </thead>
+            <tbody id="positionsBody">
+              <tr><td colspan="9" class="gq-empty">暂无数据</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="gq-table-wrap" id="posPanelEvents" style="display:none;border-radius: 0 var(--gq-radius) var(--gq-radius) var(--gq-radius)">
+          <table class="gq-table">
+            <thead>
+              <tr>
+                <th>时间</th><th>动作</th><th>交易对</th><th>方向</th><th>数量</th><th>价格</th>
+              </tr>
+            </thead>
+            <tbody id="historyBody">
+              <tr><td colspan="6" class="gq-empty">暂无数据</td></tr>
+            </tbody>
+          </table>
+          <div class="gq-pager" style="padding:12px 14px">
+            <span class="gq-pager-meta" id="histPageMeta">第 1 页</span>
+            <button class="gq-btn gq-btn--ghost gq-btn--sm" onclick="historyPage(-1)">‹ 上一页</button>
+            <button class="gq-btn gq-btn--ghost gq-btn--sm" onclick="historyPage(1)">下一页 ›</button>
+          </div>
+        </div>
+
+        <div class="gq-table-wrap" id="posPanelAnalysis" style="display:none;border-radius: 0 var(--gq-radius) var(--gq-radius) var(--gq-radius)">
+          <div class="gq-empty">暂无数据</div>
+        </div>
+      </section>
+
+      <!-- ============ #system 系统控制 ============ -->
+      <section class="gq-page" data-page="system">
+        <div class="gq-page-head">
+          <h2>系统控制</h2>
+          <div class="gq-spacer"></div>
+          <button class="gq-btn gq-btn--ghost" onclick="loadSystem()">
+            <svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+            刷新
+          </button>
+        </div>
+
+        <!-- 语言设置 -->
+        <div class="gq-sys-section">
+          <h3>语言设置</h3>
+          <div class="gq-sys-row">
+            <div>
+              <div class="gq-sys-row__title">显示语言</div>
+              <div class="gq-sys-row__desc">切换控制台显示语言，保存后立即生效</div>
+            </div>
+            <div class="gq-spacer"></div>
+            <select class="gq-select" style="max-width:240px">
+              <option>简体中文</option>
+              <option>English</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 通知渠道设置 -->
+        <div class="gq-sys-section">
+          <h3>通知渠道设置</h3>
+
+          <div class="gq-sys-row">
+            <div class="gq-sys-row__icon wechat">
+              <svg viewBox="0 0 24 24"><path d="M9 9c-3.3 0-6 2.4-6 5.5 0 1.6.7 3 1.9 4L4 21l3.3-1.5c.5.1 1.1.2 1.7.2"/><circle cx="7" cy="13" r=".8" fill="currentColor"/><circle cx="11" cy="13" r=".8" fill="currentColor"/><path d="M21 13c0-3.1-2.7-5.5-6-5.5-3.3 0-6 2.4-6 5.5s2.7 5.5 6 5.5c.5 0 1-.1 1.5-.2L19 20l-.7-2.4c1.7-1 2.7-2.7 2.7-4.6z"/></svg>
+            </div>
+            <div class="gq-sys-row__main">
+              <div class="gq-sys-row__title">微信服务号</div>
+              <div class="gq-sys-row__desc">关注银河量化跟单系统公众号并输入授权码完成账户关联</div>
+            </div>
+            <div class="gq-sys-row__field">
+              <span class="gq-sys-row__field-label">授权码</span>
+              <input class="gq-input gq-sys-row__input" placeholder="开发中..." disabled />
+            </div>
+            <div class="gq-sys-row__actions">
+              <button class="gq-btn gq-btn--primary" disabled>生成授权码</button>
+            </div>
+          </div>
+
+          <div class="gq-sys-row">
+            <div class="gq-sys-row__icon telegram">
+              <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M21 4 2 11.5l6 2 2 6 4-4 5 4 2-15.5z"/></svg>
+            </div>
+            <div class="gq-sys-row__main">
+              <div class="gq-sys-row__title">Telegram机器人</div>
+              <div class="gq-sys-row__desc">关注 @GalaxyQuant bot 并发送 /start 以获得会话ID</div>
+            </div>
+            <div class="gq-sys-row__field">
+              <span class="gq-sys-row__field-label">会话ID</span>
+              <input class="gq-input gq-sys-row__input" placeholder="" />
+            </div>
+            <div class="gq-sys-row__actions">
+              <button class="gq-btn gq-btn--primary">确认绑定</button>
+              <button class="gq-btn gq-btn--ghost">发送测试消息</button>
+            </div>
+          </div>
+
+          <div class="gq-sys-row">
+            <div class="gq-sys-row__icon email">
+              <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+            </div>
+            <div class="gq-sys-row__main">
+              <div class="gq-sys-row__title">QQ邮箱</div>
+              <div class="gq-sys-row__desc">收信率高，信息更全面。</div>
+            </div>
+            <div class="gq-sys-row__field">
+              <span class="gq-sys-row__field-label">收信邮箱</span>
+              <input class="gq-input gq-sys-row__input" type="email" />
+            </div>
+            <div class="gq-sys-row__actions">
+              <button class="gq-btn gq-btn--primary">确认绑定</button>
+              <button class="gq-btn gq-btn--ghost">发送测试邮箱</button>
+            </div>
+          </div>
+
+          <div class="gq-sys-row">
+            <div class="gq-sys-row__icon sms">
+              <svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M11 18h2"/></svg>
+            </div>
+            <div class="gq-sys-row__main">
+              <div class="gq-sys-row__title">手机短信</div>
+              <div class="gq-sys-row__desc">通知更及时，但成本高昂，使用将扣除相应积分。</div>
+            </div>
+            <div class="gq-sys-row__field">
+              <span class="gq-sys-row__field-label">授权码</span>
+              <input class="gq-input gq-sys-row__input" placeholder="开发中..." disabled />
+            </div>
+            <div class="gq-sys-row__actions">
+              <button class="gq-btn gq-btn--primary" disabled>确认绑定</button>
+              <button class="gq-btn gq-btn--ghost" disabled>发送测试手机号</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 软件更新 / 服务状态 -->
+        <div class="gq-sys-section">
+          <h3>服务状态 & 数据源</h3>
+
+          <div class="gq-sys-row">
+            <div class="gq-sys-row__icon sms">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            </div>
+            <div class="gq-sys-row__main">
+              <div class="gq-sys-row__title">运行状态</div>
+              <div class="gq-sys-row__desc">运行 <strong id="sysRun">—</strong> · 连接 <strong id="sysConn">—</strong> · 数据源 <strong id="sysSource">—</strong> · 运行时长 <strong id="sysUptime">—</strong></div>
+            </div>
+          </div>
+
+          <div class="gq-sys-row">
+            <div class="gq-sys-row__icon sms">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M3 12h6M15 12h6M12 3v6M12 15v6"/></svg>
+            </div>
+            <div class="gq-sys-row__main">
+              <div class="gq-sys-row__title">数据源配置</div>
+              <div class="gq-sys-row__desc">跟单员 Portfolio ID 与 Binance Cookie（仅管理员可见）</div>
+              <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap">
+                <input class="gq-input" id="cfgLeader" placeholder="Portfolio ID 例如 SP1234567890" style="flex:1;min-width:240px" />
+                <textarea class="gq-input" id="cfgCookie" rows="1" placeholder="Binance Cookie (可选)" style="flex:2;min-width:240px;height:36px;padding-top:8px"></textarea>
+              </div>
+            </div>
+            <div class="gq-sys-row__actions">
+              <button class="gq-btn gq-btn--primary" onclick="saveSystemCfg()">保存配置</button>
+            </div>
+          </div>
+
+          <div class="gq-sys-row">
+            <div class="gq-sys-row__icon sms">
+              <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="M9 10h6M9 14h4"/></svg>
+            </div>
+            <div class="gq-sys-row__main">
+              <div class="gq-sys-row__title">订阅校验 (subscription_enforced)</div>
+              <div class="gq-sys-row__desc">关闭后所有账户均可下单（自托管模式）</div>
+            </div>
+            <label class="gq-switch">
+              <input type="checkbox" id="tglEnforced" onchange="toggleSysFlag('subscription_enforced', this)" />
+              <span class="gq-switch__track"></span>
+            </label>
+          </div>
+
+          <div class="gq-sys-row">
+            <div class="gq-sys-row__icon sms">
+              <svg viewBox="0 0 24 24"><path d="M5 4 19 12 5 20z"/></svg>
+            </div>
+            <div class="gq-sys-row__main">
+              <div class="gq-sys-row__title">引擎已启用 (enabled)</div>
+              <div class="gq-sys-row__desc">关闭引擎将立即停止跟随下单，但不会平仓现有持仓</div>
+            </div>
+            <label class="gq-switch">
+              <input type="checkbox" id="tglEnabled" onchange="toggleSysFlag('enabled', this)" />
+              <span class="gq-switch__track"></span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ============ Bind API Key Modal ============ -->
+  <div class="gq-modal-bg" id="bindModal" onclick="if(event.target===this) closeBindModal()">
+    <div class="gq-modal">
+      <div class="gq-modal__head">
+        <span class="gq-modal__title">绑定 API Key</span>
+        <button class="gq-modal__close" onclick="closeBindModal()" aria-label="关闭">
+          <svg width="18" height="18" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M6 18 18 6"/></svg>
+        </button>
+      </div>
+      <div class="gq-modal__body">
+        <div class="gq-modal__row">
+          <label>关联套餐</label>
+          <select class="gq-select" id="bindBiz"><option value="">— 请选择 —</option></select>
+        </div>
+        <div class="gq-modal__row">
+          <label>交易所</label>
+          <select class="gq-select" id="bindEx" onchange="onExchangeChange()">
+            <option value="binance">Binance</option>
+            <option value="okx">OKX</option>
+          </select>
+        </div>
+        <div class="gq-modal__row">
+          <label>别名</label>
+          <input class="gq-input" id="bindAlias" placeholder="例如 主账户-A" />
+        </div>
+        <div class="gq-modal__row">
+          <label>API Key</label>
+          <input class="gq-input" id="bindKey" autocomplete="off" />
+        </div>
+        <div class="gq-modal__row">
+          <label>API Secret</label>
+          <input class="gq-input" id="bindSecret" type="password" autocomplete="off" />
+        </div>
+        <div class="gq-modal__row" id="bindPassRow" style="display:none">
+          <label>Passphrase</label>
+          <input class="gq-input" id="bindPass" autocomplete="off" placeholder="OKX 必填" />
+        </div>
+      </div>
+      <div class="gq-modal__foot">
+        <button class="gq-btn gq-btn--ghost" onclick="closeBindModal()">取消</button>
+        <button class="gq-btn gq-btn--primary" onclick="submitBind()">确认绑定</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="gq-toast" id="toast"></div>
+
+  <script>
+  // ============================================================
+  //  /kzt — Galaxy Quantitative console
+  //  All fetch endpoints, JS function names, and DOM ids retained
+  //  from prior implementation; only DOM structure / class names
+  //  changed to use galaxy-tokens.css.
+  // ============================================================
+
+  // ---------- token plumbing ----------
+  const APP_TOKEN_KEY    = "appToken";
+  const ADMIN_TOKEN_KEY  = "adminToken";
+  const ADMIN_TOKEN_EXP  = "adminTokenExpiresAt";
+
+  function appToken()   { return localStorage.getItem(APP_TOKEN_KEY) || ""; }
+  function adminToken() { return localStorage.getItem(ADMIN_TOKEN_KEY) || ""; }
+  function adminFresh() {
+    const exp = parseInt(localStorage.getItem(ADMIN_TOKEN_EXP) || "0", 10);
+    return adminToken() && exp > Date.now() + 30_000;
+  }
+
+  async function refreshAdminToken() {
+    const r = await fetch("/api/portal/auth/console-token", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + appToken() },
+    });
+    if (!r.ok) {
+      if (r.status === 401) redirectLogin();
+      throw new Error("console-token failed");
+    }
+    const raw = await r.json();
+    const j = (raw && typeof raw === "object" && "data" in raw && "code" in raw) ? raw.data : raw;
+    localStorage.setItem(ADMIN_TOKEN_KEY, j.token || "");
+    if (j.expiresAt) localStorage.setItem(ADMIN_TOKEN_EXP, String(j.expiresAt));
+    return j.token;
+  }
+
+  function redirectLogin() {
+    localStorage.removeItem(APP_TOKEN_KEY);
+    location.href = "/login";
+  }
+
+  async function api(path, opts = {}) {
+    const isPortal = path.startsWith("/api/portal/");
+    let token = isPortal ? appToken() : adminToken();
+
+    if (!isPortal && !adminFresh()) {
+      try { token = await refreshAdminToken(); }
+      catch (e) { /* fall through */ }
+    }
+    if (isPortal && !token) { redirectLogin(); throw new Error("no portal token"); }
+
+    const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+    if (token) headers.Authorization = "Bearer " + token;
+
+    let r = await fetch(path, { ...opts, headers });
+    if (r.status === 401) {
+      if (isPortal) { redirectLogin(); throw new Error("portal 401"); }
+      try {
+        token = await refreshAdminToken();
+        headers.Authorization = "Bearer " + token;
+        r = await fetch(path, { ...opts, headers });
+      } catch (e) {}
+    }
+    if (!r.ok) {
+      let detail = "";
+      try { detail = (await r.json()).detail || ""; } catch {}
+      throw new Error(`HTTP ${r.status} ${path} ${detail}`);
+    }
+    if (r.status === 204) return null;
+    const ct = r.headers.get("content-type") || "";
+    if (!ct.includes("json")) return r.text();
+    const j = await r.json();
+    if (j && typeof j === "object" && "code" in j && "data" in j) {
+      if (j.code !== 0) throw new Error(j.message || `code ${j.code} on ${path}`);
+      return j.data;
+    }
+    return j;
+  }
+
+  // ---------- toast ----------
+  let toastTimer = null;
+  function toast(msg) {
+    const el = document.getElementById("toast");
+    el.textContent = msg;
+    el.classList.add("is-show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("is-show"), 2400);
+  }
+
+  // ---------- format helpers ----------
+  const fmt = {
+    money: (n, d=2) => {
+      if (n == null || isNaN(n)) return "—";
+      const v = Number(n);
+      const sign = v < 0 ? "-" : "";
+      return sign + "$" + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+    },
+    pct: (n, d=2) => {
+      if (n == null || isNaN(n)) return "—";
+      const v = Number(n);
+      return (v >= 0 ? "+" : "") + v.toFixed(d) + "%";
+    },
+    int: (n) => (n == null || isNaN(n)) ? "—" : Number(n).toLocaleString(),
+    ts:  (t) => {
+      if (!t) return "—";
+      const d = new Date(typeof t === "number" ? t : Date.parse(t));
+      if (isNaN(d.getTime())) return "—";
+      const pad = (x) => String(x).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    },
+    esc: (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]),
+  };
+
+  // ---------- routing ----------
+  const PAGES = ["home", "accounts", "traders-plaza", "exchange-watch", "coin-watch", "positions", "system"];
+  const COPY_GROUP_TABS = new Set(["traders-plaza", "exchange-watch", "coin-watch", "positions"]);
+
+  function currentTab() {
+    const h = (location.hash || "#home").replace("#", "");
+    return PAGES.includes(h) ? h : "home";
+  }
+  function activateTab(name) {
+    document.querySelectorAll(".gq-page").forEach(p => p.classList.toggle("is-active", p.dataset.page === name));
+    document.querySelectorAll("#kztMenu a").forEach(a => a.classList.toggle("is-active", a.dataset.tab === name));
+    document.querySelectorAll(".gq-sidebar-footer a").forEach(a => a.classList.toggle("is-active", a.dataset.tab === name));
+    // Auto-expand the 智能跟单 group when on one of its 4 sub-views
+    if (COPY_GROUP_TABS.has(name)) {
+      const grp = document.getElementById("kztGroupCopy");
+      if (grp) grp.classList.add("is-open");
+    }
+    if (name === "home")            loadHome();
+    if (name === "accounts")        { loadAccounts(); loadEffectiveBusinesses(); }
+    if (name === "traders-plaza")   renderTradersPlaza();
+    if (name === "exchange-watch")  renderExchangeWatch();
+    if (name === "coin-watch")      renderCoinWatch();
+    if (name === "positions")       renderPositions();
+    if (name === "system")          loadSystem();
+    _scheduleTabRefresh(name);
+  }
+
+  let _tabRefreshTimer = null;
+  function _scheduleTabRefresh(name) {
+    if (_tabRefreshTimer) { clearInterval(_tabRefreshTimer); _tabRefreshTimer = null; }
+    const fn = ({
+      "home":            () => { if (typeof loadHome === "function") loadHome(); },
+      "accounts":        () => { if (typeof loadAccounts === "function") loadAccounts(); },
+      "traders-plaza":   () => { if (typeof renderTradersPlaza === "function") renderTradersPlaza(); },
+      "exchange-watch":  () => { if (typeof renderExchangeWatch === "function") renderExchangeWatch(); },
+      "coin-watch":      () => { if (typeof renderCoinWatch === "function") renderCoinWatch(); },
+      "positions":       () => { if (typeof renderPositions === "function") renderPositions(); },
+      "system":          () => { if (typeof loadSystem === "function") loadSystem(); },
+    })[name];
+    if (!fn) return;
+    _tabRefreshTimer = setInterval(() => {
+      if (document.hidden) return;
+      try { fn(); } catch (e) { console.warn("auto-refresh failed", e); }
+    }, 25_000);
+  }
+
+  window.addEventListener("kzt:new-signal", () => {
+    const tab = currentTab();
+    if (tab === "positions" && typeof renderPositions === "function") renderPositions();
+    if (tab === "traders-plaza" && typeof renderTradersPlaza === "function") renderTradersPlaza();
+  });
+
+  function toggleGroup(id) {
+    document.getElementById(id).classList.toggle("is-open");
+  }
+  function toggleSidebar() {
+    document.getElementById("kztSidebar").classList.toggle("is-open");
+  }
+
+  // ---------- bootstrap ----------
+  async function bootstrap() {
+    if (!appToken()) { redirectLogin(); return; }
+    try {
+      const u = await api("/api/portal/account/userInfo");
+      window.__USER__ = u;
+      document.getElementById("userName").textContent   = u.userName || u.email || "用户";
+      document.getElementById("userPoints").textContent = u.points ?? 0;
+      document.getElementById("userAvatar").textContent = (u.userName || u.email || "G").slice(0, 1).toUpperCase();
+      if (u.tier) {
+        const lbl = document.getElementById("userTierLabel");
+        if (lbl) lbl.textContent = u.tier;
+      }
+    } catch (e) { console.warn("userInfo failed", e); }
+
+    try { await refreshAdminToken(); } catch (e) { console.warn("admin token warmup failed", e); }
+    activateTab(currentTab());
+
+    try {
+      const isAdmin = (window.__USER__ && window.__USER__.authority >= 9) || false;
+      if (isAdmin) startAdminBellPoll();
+    } catch (e) {}
+
+    try {
+      loadSignalsStrip();
+      if (!window.__signalsTimer) {
+        window.__signalsTimer = setInterval(loadSignalsStrip, 30_000);
+      }
+    } catch (e) { console.warn("signals strip init failed", e); }
+  }
+
+  let _bellTimer = null;
+  async function pollAdminBell() {
+    try {
+      const r = await api("/api/portal/admin/signals/recent");
+      const list = Array.isArray(r) ? r : (r && r.items) || [];
+      const oneHourAgo = Date.now() - 3600 * 1000;
+      const fresh = list.some(s => {
+        const t = Date.parse(s.ts || s.publishedAt || s.createdAt || s.time || 0);
+        return !isNaN(t) && t > oneHourAgo;
+      });
+      const dot = document.getElementById("bellDot");
+      if (dot) dot.style.display = fresh ? "" : "none";
+    } catch (e) {}
+  }
+  function startAdminBellPoll() {
+    pollAdminBell();
+    clearInterval(_bellTimer);
+    _bellTimer = setInterval(pollAdminBell, 60_000);
+  }
+
+  window.addEventListener("hashchange", () => activateTab(currentTab()));
+  window.addEventListener("hashchange", () => {
+    const t = currentTab();
+    if (COPY_GROUP_TABS.has(t)) {
+      document.getElementById("kztGroupCopy").classList.add("is-open");
+    }
+  });
+
+  // ============================================================
+  //  #home loaders
+  // ============================================================
+  async function loadHome() {
+    try {
+      const s = await api("/api/portal/dashboard/stats");
+      document.getElementById("statTotal").textContent    = fmt.int(s.totalEquity ?? 0);
+      document.getElementById("statAccounts").textContent = fmt.int(s.accountCount ?? 0);
+      document.getElementById("statPnl").textContent      = fmt.money(s.cumulativePnl ?? 0);
+      document.getElementById("statDaily").textContent    = fmt.money(s.dailyPnl ?? 0);
+      const pnl = Number(s.cumulativePnl ?? 0);
+      const day = Number(s.dailyPnl ?? 0);
+      const pe = document.getElementById("statPnlDelta");
+      pe.style.color = pnl >= 0 ? "var(--gq-up)" : "var(--gq-down)";
+      pe.textContent = (pnl >= 0 ? "▲" : "▼") + " 自接入起";
+      const de = document.getElementById("statDailyDelta");
+      de.style.color = day >= 0 ? "var(--gq-up)" : "var(--gq-down)";
+      de.textContent = (day >= 0 ? "▲" : "▼") + " 今日";
+    } catch (e) { console.warn("stats failed", e); }
+
+    try {
+      const curve = await api("/api/portal/dashboard/equity-curve?days=30");
+      drawEquityCurve(Array.isArray(curve) ? curve : (curve.points || []));
+      document.getElementById("curveRange").textContent = "近 30 日";
+    } catch (e) {
+      console.warn("equity-curve failed", e);
+      drawEquityCurve([]);
+    }
+
+    try {
+      const news = await api("/api/portal/dashboard/news");
+      renderNews(Array.isArray(news) ? news : (news.items || []));
+    } catch (e) { renderNews([]); }
+
+    try {
+      const t = await api("/api/portal/dashboard/ticker");
+      renderTicker(t);
+    } catch (e) { renderTicker(null); }
+
+    loadSignalsStrip();
+    if (!window.__signalsTimer) {
+      window.__signalsTimer = setInterval(loadSignalsStrip, 30_000);
+    }
+  }
+
+  // — Live signal feed —
+  const _seenSignalIds = new Set();
+  const _MAX_SIGNAL_ROWS = 12;
+
+  function _signalRowHTML(s, animate) {
+    const action = String(s.action || "").toLowerCase();
+    const actionLabel = ({open: "开仓", add: "加仓", reduce: "减仓", close: "平仓"})[action] || action || "—";
+    const side = String(s.side || "").toUpperCase();
+    const sideClass = side === "BUY" ? "long" : side === "SELL" ? "short" : "";
+    const ts = s.ts ? new Date(s.ts) : null;
+    const tlabel = ts ? `${String(ts.getHours()).padStart(2,"0")}:${String(ts.getMinutes()).padStart(2,"0")}:${String(ts.getSeconds()).padStart(2,"0")}` : "—";
+    const qty = Number(s.qty || 0).toFixed(4);
+    const price = Number(s.price || 0).toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const badgeKind = s.badge === "admin" ? "admin" : "auto";
+    const badgeLabel = s.badge === "admin" ? "管理员" : "自动";
+    const cls = "gq-sig" + (animate ? " gq-sig-fresh" : "");
+    const sigId = s.id || `${s.ts}-${s.symbol}-${s.action}`;
+    return `<li class="${cls}" data-sig-id="${escapeHtml(sigId)}">
+      <span class="gq-sig-time">${tlabel}</span>
+      <span class="gq-sig-badge ${badgeKind}">${badgeLabel}</span>
+      <span class="gq-sig-pair">${escapeHtml(s.symbol || "—")}</span>
+      <span class="gq-sig-action ${action}">${actionLabel}</span>
+      <span class="gq-sig-side ${sideClass}">${side || "—"}</span>
+      <span class="gq-sig-qty">${qty}</span>
+      <span class="gq-sig-price">@ ${price}</span>
+    </li>`;
+  }
+
+  async function loadSignalsStrip() {
+    const list = document.getElementById("signalsList");
+    const meta = document.getElementById("signalsMeta");
+    if (!list) return;
+    try {
+      const arr = await api("/api/portal/dashboard/recent-signals?limit=8");
+      if (!Array.isArray(arr) || !arr.length) {
+        list.innerHTML = '<li class="gq-empty">等待信号入流…</li>';
+        meta.textContent = "—";
+        return;
+      }
+      _seenSignalIds.clear();
+      arr.forEach(s => {
+        const sigId = s.id || `${s.ts}-${s.symbol}-${s.action}`;
+        _seenSignalIds.add(sigId);
+      });
+      list.innerHTML = arr.map(s => _signalRowHTML(s, false)).join("");
+      meta.textContent = `共 ${arr.length} 条 · 实时推送`;
+      _ensureSignalStream();
+    } catch (e) {
+      list.innerHTML = '<li class="gq-empty">信号流暂时不可用</li>';
+      meta.textContent = "—";
+    }
+  }
+
+  let _sigEventSource = null;
+  function _ensureSignalStream() {
+    if (_sigEventSource && _sigEventSource.readyState !== 2) return;
+    const tok = appToken();
+    if (!tok) return;
+    try {
+      const url = "/.well-known/galaxy-sse?token=" + encodeURIComponent(tok);
+      const es = new EventSource(url);
+      _sigEventSource = es;
+      es.addEventListener("signal", (e) => {
+        try {
+          const s = JSON.parse(e.data);
+          _prependSignal(s);
+        } catch (err) { console.warn("signal parse failed", err); }
+      });
+      es.onerror = () => {
+        if (es.readyState === 2) console.warn("signal stream closed");
+      };
+    } catch (e) { console.warn("EventSource init failed", e); }
+  }
+
+  function _prependSignal(s) {
+    const list = document.getElementById("signalsList");
+    if (!list) return;
+    const sigId = s.id || `${s.ts}-${s.symbol}-${s.action}`;
+    if (_seenSignalIds.has(sigId)) return;
+    _seenSignalIds.add(sigId);
+    try { window.dispatchEvent(new CustomEvent("kzt:new-signal", { detail: s })); } catch (_) {}
+    const empty = list.querySelector("li.gq-empty");
+    if (empty) empty.remove();
+    const wrap = document.createElement("template");
+    wrap.innerHTML = _signalRowHTML(s, true).trim();
+    const li = wrap.content.firstChild;
+    list.insertBefore(li, list.firstChild);
+    setTimeout(() => li.classList.remove("gq-sig-fresh"), 600);
+    while (list.children.length > _MAX_SIGNAL_ROWS) {
+      list.removeChild(list.lastChild);
+    }
+    const meta = document.getElementById("signalsMeta");
+    if (meta) meta.textContent = `共 ${list.children.length} 条 · 实时推送`;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+  }
+
+  let chart = null;
+  function drawEquityCurve(points) {
+    const ctx = document.getElementById("equityCurve");
+    if (!ctx) return;
+    if (!points || !points.length) {
+      // Empty state — destroy any prior chart and overlay text.
+      if (chart) { chart.destroy(); chart = null; }
+      const parent = ctx.parentElement;
+      let empty = parent.querySelector(".gq-chart-empty");
+      if (!empty) {
+        empty = document.createElement("div");
+        empty.className = "gq-chart-empty";
+        empty.textContent = "尚无收益数据";
+        parent.appendChild(empty);
+      }
+      return;
+    }
+    // Remove empty overlay if present.
+    const parent = ctx.parentElement;
+    const oldEmpty = parent.querySelector(".gq-chart-empty");
+    if (oldEmpty) oldEmpty.remove();
+
+    const labels = points.map(p => {
+      const d = new Date(p.ts || p.t || p.date);
+      return isNaN(d) ? "" : `${d.getMonth()+1}-${String(d.getDate()).padStart(2,"0")}`;
+    });
+    const data = points.map(p => Number(p.equity ?? p.value ?? 0));
+    if (chart) chart.destroy();
+    const grad = ctx.getContext("2d").createLinearGradient(0, 0, 0, 280);
+    grad.addColorStop(0, "rgba(58,203,190,0.32)");
+    grad.addColorStop(1, "rgba(58,203,190,0)");
+    chart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [{
+          label: "USDT",
+          data,
+          borderColor: "#3ACBBE",
+          backgroundColor: grad,
+          fill: true,
+          tension: 0.35,
+          pointRadius: 0,
+          borderWidth: 2,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: "#909399", font: { size: 11 }, maxTicksLimit: 8 }, grid: { display: false } },
+          y: { ticks: { color: "#909399", font: { size: 11 } }, grid: { color: "#EBEEF5" } },
+        },
+      },
+    });
+  }
+
+  function renderNews(items) {
+    const ul = document.getElementById("newsList");
+    document.getElementById("newsMeta").textContent = items.length ? `${items.length} 条` : "—";
+    if (!items.length) {
+      ul.innerHTML = '<li class="gq-empty">暂无公告</li>';
+      return;
+    }
+    ul.innerHTML = items.slice(0, 4).map((n, i) => `
+      <li class="gq-news-item">
+        <div class="gq-news-thumb">
+          <svg width="22" height="22" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 12h4l3-7 4 14 3-7h4"/>
+          </svg>
+        </div>
+        <div class="gq-news-body">
+          <div class="gq-news-title">${fmt.esc(n.title || "（无标题）")}</div>
+          <div class="gq-news-summary">${fmt.esc(n.summary || n.body || "")}</div>
+          <div class="gq-news-time">${fmt.esc(fmt.ts(n.ts || n.publishedAt || n.time))}</div>
+        </div>
+      </li>`).join("");
+  }
+
+  function fmtBig(n) {
+    if (n == null || isNaN(Number(n))) return "—";
+    const v = Math.abs(Number(n));
+    const sign = Number(n) < 0 ? "-" : "";
+    if (v >= 1e8)  return sign + "$" + (v / 1e8).toFixed(2) + "亿";
+    if (v >= 1e4)  return sign + "$" + (v / 1e4).toFixed(2) + "万";
+    return sign + "$" + v.toFixed(0);
+  }
+  function setText(id, v) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = (v == null || v === "") ? "—" : v;
+  }
+  function setPct(id, n, digits = 2) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (n == null || isNaN(Number(n))) {
+      el.textContent = "—";
+      el.style.color = "";
+      return;
+    }
+    const v = Number(n);
+    el.textContent = (v >= 0 ? "+" : "") + v.toFixed(digits) + "%";
+    el.style.color = v >= 0 ? "var(--gq-up)" : "var(--gq-down)";
+  }
+
+  function renderTicker(t) {
+    t = t || {};
+    const btc = t.btc || {};
+    setText("btcPrice", btc.price != null ? "$" + fmt.int(btc.price) : "—");
+    const ch = btc.change24h;
+    const chEl = document.getElementById("btcChange");
+    chEl.classList.remove("gq-pill--up", "gq-pill--down");
+    if (ch == null || isNaN(Number(ch))) {
+      chEl.textContent = "—";
+      chEl.classList.add("gq-pill--neutral");
+    } else {
+      const v = Number(ch);
+      chEl.textContent = (v >= 0 ? "+" : "") + v.toFixed(2) + "%";
+      chEl.classList.add(v >= 0 ? "gq-pill--up" : "gq-pill--down");
+    }
+
+    const fg = t.fearGreed;
+    if (fg == null || isNaN(Number(fg))) {
+      setText("fgValue", "—");
+      setText("fgLabel", "—");
+      document.getElementById("fgMarker").style.left = "50%";
+    } else {
+      const v = Math.max(0, Math.min(100, Number(fg)));
+      setText("fgValue", String(Math.round(v)));
+      setText("fgLabel", fgLabel(v));
+      document.getElementById("fgMarker").style.left = v + "%";
+    }
+
+    const liq = t.liquidation || {};
+    setText("liq24h", liq.h24 != null ? fmtBig(liq.h24) : "—");
+    setText("liq1h",  liq.h1  != null ? fmtBig(liq.h1)  : "—");
+
+    const oi = t.openInterest || {};
+    setText("oiOkx",     oi.okx     != null ? fmtBig(oi.okx)     : "—");
+    setText("oiBinance", oi.binance != null ? fmtBig(oi.binance) : "—");
+    setText("oiBitget",  oi.bitget  != null ? fmtBig(oi.bitget)  : "—");
+
+    setPct("qPrem", t.quarterlyPremium);
+
+    const ls = t.longShort;
+    if (ls == null || isNaN(Number(ls))) {
+      setText("lsLabel", "多 — : 空 —");
+      document.getElementById("lsFill").style.width = "50%";
+    } else {
+      const longPct = Math.max(0, Math.min(1, Number(ls))) * 100;
+      document.getElementById("lsFill").style.width = longPct + "%";
+      setText("lsLabel", `多 ${longPct.toFixed(0)}% : 空 ${(100-longPct).toFixed(0)}%`);
+    }
+
+    setPct("usdtPrem", t.usdtPremium);
+
+    setPct("fundingRate", t.fundingRate, 4);
+    setText("fundingTimer", t.nextFundingIn || "—");
+  }
+  function fgLabel(v) {
+    if (v < 25) return "极度恐慌";
+    if (v < 45) return "恐慌";
+    if (v < 55) return "中性";
+    if (v < 75) return "贪婪";
+    return "极度贪婪";
+  }
+
+  // ============================================================
+  //  #accounts
+  // ============================================================
+  async function loadAccounts() {
+    const body = document.getElementById("accountsBody");
+    try {
+      const r = await api("/api/accounts");
+      const list = Array.isArray(r) ? r : (r.items || r.accounts || []);
+      if (!list.length) {
+        body.innerHTML = `<tr><td colspan="6" class="gq-empty">尚未绑定任何账户</td></tr>`;
+        return;
+      }
+      body.innerHTML = list.map(a => {
+        const enabled = !!(a.enabled ?? a.is_enabled ?? true);
+        const status = enabled
+          ? '<span class="gq-pill gq-pill--up">运行中</span>'
+          : '<span class="gq-pill gq-pill--neutral">已停用</span>';
+        return `<tr>
+          <td><strong>${fmt.esc(a.alias || a.account_id || "—")}</strong></td>
+          <td>${fmt.esc((a.exchange || "—").toUpperCase())}</td>
+          <td>${status}</td>
+          <td>${fmt.esc(fmt.ts(a.created_at || a.createdAt))}</td>
+          <td>${fmt.esc(fmt.ts(a.expires_at || a.expirationTimestamp))}</td>
+          <td style="text-align:right">
+            <button class="gq-btn gq-btn--ghost gq-btn--sm" onclick="toggleAccount('${fmt.esc(a.business_id || a.id || a.account_id)}', ${!enabled})">${enabled ? "停用" : "启用"}</button>
+            <button class="gq-btn gq-btn--danger gq-btn--sm" onclick="removeAccount('${fmt.esc(a.business_id || a.id || a.account_id)}')">删除</button>
+          </td>
+        </tr>`;
+      }).join("");
+    } catch (e) {
+      body.innerHTML = `<tr><td colspan="6" class="gq-empty">加载失败：${fmt.esc(e.message)}</td></tr>`;
+    }
+  }
+
+  async function toggleAccount(bizId, enable) {
+    if (!bizId) return;
+    try {
+      await api(`/api/portal/account/businesses/${encodeURIComponent(bizId)}/${enable ? "activate" : "deactivate"}`, { method: "POST" });
+      toast(enable ? "已启用" : "已停用");
+      loadAccounts();
+    } catch (e) { toast("操作失败：" + e.message); }
+  }
+  async function removeAccount(bizId) {
+    if (!bizId) return;
+    if (!confirm("确定删除该 API 绑定？仅停用引擎，不删除已有历史。")) return;
+    try {
+      await api(`/api/portal/account/businesses/${encodeURIComponent(bizId)}`, { method: "DELETE" });
+      toast("已删除");
+      loadAccounts();
+    } catch (e) { toast("删除失败：" + e.message); }
+  }
+
+  let _effectiveBiz = [];
+  async function loadEffectiveBusinesses() {
+    try {
+      const r = await api("/api/portal/account/businesses?effective=true");
+      _effectiveBiz = (Array.isArray(r) ? r : (r.items || [])).filter(b => !b.tradeAccountId);
+    } catch (e) { _effectiveBiz = []; }
+  }
+
+  function openBindModal() {
+    const sel = document.getElementById("bindBiz");
+    sel.innerHTML = '<option value="">— 请选择 —</option>' +
+      _effectiveBiz.map(b => `<option value="${fmt.esc(b.id || b.businessId)}">${fmt.esc(b.alias || b.id)} · 到期 ${fmt.esc(fmt.ts(b.expirationTimestamp))}</option>`).join("");
+    if (!_effectiveBiz.length) {
+      sel.innerHTML += '<option value="" disabled>（暂无未绑定的有效套餐，请先到商城购买）</option>';
+    }
+    document.getElementById("bindAlias").value  = "";
+    document.getElementById("bindKey").value    = "";
+    document.getElementById("bindSecret").value = "";
+    document.getElementById("bindPass").value   = "";
+    document.getElementById("bindEx").value     = "binance";
+    onExchangeChange();
+    document.getElementById("bindModal").classList.add("is-open");
+  }
+  function closeBindModal() { document.getElementById("bindModal").classList.remove("is-open"); }
+  function onExchangeChange() {
+    const isOkx = document.getElementById("bindEx").value === "okx";
+    document.getElementById("bindPassRow").style.display = isOkx ? "" : "none";
+  }
+
+  async function submitBind() {
+    const bizId = document.getElementById("bindBiz").value;
+    if (!bizId) return toast("请选择关联套餐");
+    const body = {
+      exchange:   document.getElementById("bindEx").value,
+      apiKey:     document.getElementById("bindKey").value.trim(),
+      apiSecret:  document.getElementById("bindSecret").value.trim(),
+      passphrase: document.getElementById("bindPass").value.trim() || null,
+      alias:      document.getElementById("bindAlias").value.trim() || null,
+    };
+    if (!body.apiKey || !body.apiSecret) return toast("请填写 API Key 与 Secret");
+    if (body.exchange === "okx" && !body.passphrase) return toast("OKX 必须填写 Passphrase");
+    try {
+      await api(`/api/portal/account/businesses/${encodeURIComponent(bizId)}/bind-api-key`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      toast("绑定成功");
+      closeBindModal();
+      await loadEffectiveBusinesses();
+      loadAccounts();
+    } catch (e) { toast("绑定失败：" + e.message); }
+  }
+
+  // ============================================================
+  //  #traders-plaza · #exchange-watch · #coin-watch
+  //  All three pull from /api/projects; client-side filter by exchange.
+  // ============================================================
+  const EXCHANGE_WATCH_SET = new Set(["binance", "okx", "gate", "bitget"]);
+  const COIN_WATCH_SET     = new Set(["bicoin", "smart_money", "onchain", "hyperliquid"]);
+
+  // Cache the latest projects payload so the Plaza filter chips don't
+  // refetch on every click. Refreshed by activateTab() / refresh button.
+  let _projectsCache = [];
+
+  async function _fetchProjects() {
+    const r = await api("/api/projects");
+    const list = Array.isArray(r) ? r : (r.items || r.projects || []);
+    _projectsCache = list;
+    return list;
+  }
+
+  // — Helper: tiny SVG sparkline for a card —
+  function sparklineSvg(points, w, h) {
+    if (!points || points.length < 2) {
+      return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" width="100%" height="100%"></svg>`;
+    }
+    const min = Math.min(...points);
+    const max = Math.max(...points);
+    const range = (max - min) || 1;
+    const stepX = w / (points.length - 1);
+    const coords = points.map((v, i) => {
+      const x = (i * stepX).toFixed(2);
+      const y = (h - ((v - min) / range) * h).toFixed(2);
+      return `${x},${y}`;
+    }).join(" ");
+    const up = points[points.length - 1] >= points[0];
+    const stroke = up ? "var(--gq-up)" : "var(--gq-down)";
+    return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" width="100%" height="100%" style="display:block">
+      <polyline fill="none" stroke="${stroke}" stroke-width="1.6" points="${coords}"/>
+    </svg>`;
+  }
+
+  // — #traders-plaza —
+  let _plazaFilter = "all";
+
+  function _renderPlazaCards() {
+    const grid = document.getElementById("tpGrid");
+    if (!grid) return;
+    const list = (_projectsCache || []).filter(p => {
+      if (_plazaFilter === "all") return true;
+      return String(p.exchange || "").toLowerCase() === _plazaFilter;
+    });
+    if (!list.length) {
+      grid.innerHTML = '<div class="gq-empty" style="grid-column:1/-1">暂无数据</div>';
+      return;
+    }
+    grid.innerHTML = list.map(p => {
+      const ex = String(p.exchange || "—").toUpperCase();
+      const name = fmt.esc(p.display_name || "Anon");
+      const pid  = fmt.esc(p.portfolio_id || p.leader_id || "");
+      const pnl  = p.total_pnl_pct;
+      const pnlText = (pnl == null || isNaN(Number(pnl)))
+        ? '<span class="gq-trader-card__pnl">—</span>'
+        : `<span class="gq-trader-card__pnl ${Number(pnl) >= 0 ? "up" : "down"}">${(Number(pnl) >= 0 ? "+" : "") + Number(pnl).toFixed(2)}%</span>`;
+      const spark = sparklineSvg(p.sparkline || [], 200, 56);
+      const en = !!(p.enabled ?? true);
+      const followBtn = en
+        ? `<button class="gq-btn gq-btn--ghost gq-btn--sm" onclick="toggleProject('${pid}', false)">已跟单</button>`
+        : `<button class="gq-btn gq-btn--primary gq-btn--sm" onclick="toggleProject('${pid}', true)">跟单</button>`;
+      const initial = (p.display_name || "A").slice(0, 1).toUpperCase();
+      return `<div class="gq-trader-card">
+        <div class="gq-trader-card__head">
+          <span class="gq-trader-ex-tag">${fmt.esc(ex)}</span>
+          <span class="gq-trader-card__name">${name}</span>
+          <span class="gq-trader-card__avatar">${fmt.esc(initial)}</span>
+        </div>
+        <div class="gq-trader-card__spark">${spark}</div>
+        <div class="gq-trader-card__stats">
+          ${pnlText}
+          <span class="gq-trader-card__sub">总收益</span>
+        </div>
+        <div class="gq-trader-card__foot">
+          <span class="gq-trader-card__sub">${pid || "—"}</span>
+          <div class="gq-spacer"></div>
+          ${followBtn}
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  async function renderTradersPlaza() {
+    const grid = document.getElementById("tpGrid");
+    if (!grid) return;
+    grid.innerHTML = '<div class="gq-empty" style="grid-column:1/-1">加载中…</div>';
+    try {
+      await _fetchProjects();
+      _renderPlazaCards();
+    } catch (e) {
+      grid.innerHTML = `<div class="gq-empty" style="grid-column:1/-1">加载失败：${fmt.esc(e.message)}</div>`;
+    }
+  }
+
+  // Filter chip click delegate (registered once on DOMContentLoaded)
+  document.addEventListener("DOMContentLoaded", () => {
+    const wrap = document.getElementById("tpExchangeFilter");
+    if (!wrap) return;
+    wrap.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("[data-filter]");
+      if (!btn) return;
+      _plazaFilter = btn.dataset.filter || "all";
+      wrap.querySelectorAll(".gq-plaza-filter").forEach(b => b.classList.toggle("is-active", b === btn));
+      _renderPlazaCards();
+    });
+  });
+
+  // — #exchange-watch —
+  async function renderExchangeWatch() {
+    const body = document.getElementById("exchangeWatchBody");
+    if (!body) return;
+    try {
+      const list = (await _fetchProjects()).filter(p => EXCHANGE_WATCH_SET.has(String(p.exchange || "").toLowerCase()));
+      if (!list.length) {
+        body.innerHTML = `<tr><td colspan="4" class="gq-empty">暂无数据</td></tr>`;
+        return;
+      }
+      body.innerHTML = list.map(p => {
+        const ex = String(p.exchange || "—").toUpperCase();
+        const name = fmt.esc(p.display_name || "Anon");
+        const pid  = fmt.esc(p.portfolio_id || p.leader_id || "");
+        const en = !!(p.enabled ?? true);
+        const status = en
+          ? '<span class="gq-pill gq-pill--up">已跟单</span>'
+          : '<span class="gq-pill gq-pill--neutral">未跟单</span>';
+        return `<tr>
+          <td>${fmt.esc(ex)}</td>
+          <td><strong>${name}</strong>
+              <div style="font-size:11px;color:var(--gq-text-3)">${pid}</div></td>
+          <td>${status}</td>
+          <td style="text-align:right">
+            <button class="gq-btn gq-btn--ghost gq-btn--sm" onclick="toggleProject('${pid}', ${!en})">${en ? "停用" : "恢复"}</button>
+          </td>
+        </tr>`;
+      }).join("");
+    } catch (e) {
+      body.innerHTML = `<tr><td colspan="4" class="gq-empty">加载失败：${fmt.esc(e.message)}</td></tr>`;
+    }
+  }
+
+  // — #coin-watch —
+  async function renderCoinWatch() {
+    const body = document.getElementById("coinWatchBody");
+    if (!body) return;
+    try {
+      const list = (await _fetchProjects()).filter(p => COIN_WATCH_SET.has(String(p.exchange || "").toLowerCase()));
+      if (!list.length) {
+        body.innerHTML = `<tr><td colspan="3" class="gq-empty">暂无数据</td></tr>`;
+        return;
+      }
+      const sourceLabel = (k) => ({ bicoin: "币Coin", smart_money: "聪明钱", onchain: "链上", hyperliquid: "Hyperliquid" })[k] || k.toUpperCase();
+      body.innerHTML = list.map(p => {
+        const src = String(p.exchange || "").toLowerCase();
+        const ident = fmt.esc(p.portfolio_id || p.leader_id || p.display_name || "—");
+        const en = !!(p.enabled ?? true);
+        const status = en
+          ? '<span class="gq-pill gq-pill--up">已跟单</span>'
+          : '<span class="gq-pill gq-pill--neutral">未跟单</span>';
+        return `<tr>
+          <td>${fmt.esc(sourceLabel(src))}</td>
+          <td class="gq-mono">${ident}</td>
+          <td>${status}</td>
+        </tr>`;
+      }).join("");
+    } catch (e) {
+      body.innerHTML = `<tr><td colspan="3" class="gq-empty">加载失败：${fmt.esc(e.message)}</td></tr>`;
+    }
+  }
+
+  async function toggleProject(id, enable) {
+    if (!id) return;
+    try {
+      await api(`/api/projects/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: enable }),
+      });
+      toast(enable ? "已恢复" : "已停用");
+      const t = currentTab();
+      if (t === "traders-plaza")  renderTradersPlaza();
+      if (t === "exchange-watch") renderExchangeWatch();
+      if (t === "coin-watch")     renderCoinWatch();
+    } catch (e) { toast("操作失败：" + e.message); }
+  }
+
+  // ============================================================
+  //  #positions
+  //  9-col positions table + inner tabs (持仓列表 / 操作记录 / 跟单分析)
+  // ============================================================
+  function _switchPosPanel(which) {
+    const panels = {
+      "positions": "posPanelPositions",
+      "events":    "posPanelEvents",
+      "analysis":  "posPanelAnalysis",
+    };
+    Object.entries(panels).forEach(([k, id]) => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = (k === which) ? "" : "none";
+    });
+    document.querySelectorAll("#positionsInnerTabs .gq-tab-block").forEach(t => {
+      t.classList.toggle("is-active", t.dataset.posTab === which);
+    });
+    if (which === "events") loadHistory();
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const tabs = document.getElementById("positionsInnerTabs");
+    if (!tabs) return;
+    tabs.addEventListener("click", (ev) => {
+      const t = ev.target.closest("[data-pos-tab]");
+      if (!t) return;
+      _switchPosPanel(t.dataset.posTab);
+    });
+  });
+
+  // — Pull defensively: positions_snapshot rows are raw poller dicts whose
+  //   shape varies by exchange. Guard every field with fallback chains.
+  function _posCell(row, keys, fmtFn) {
+    for (const k of keys) {
+      const v = row[k];
+      if (v != null && v !== "") return fmtFn ? fmtFn(v) : v;
+    }
+    return "—";
+  }
+  function _posPnlCell(row) {
+    const pnl = row.unrealized_pnl ?? row.unrealizedProfit ?? row.pnl ?? null;
+    const pct = row.pnl_pct ?? row.roe ?? row.return_pct ?? row.percentage ?? null;
+    if (pnl == null && pct == null) return '<span class="gq-muted">—</span>';
+    const pnlNum = pnl == null ? null : Number(pnl);
+    const pctNum = pct == null ? null : Number(pct);
+    const cls = (pnlNum != null ? pnlNum : (pctNum || 0)) >= 0 ? "gq-up" : "gq-down";
+    const pnlStr = pnlNum == null ? "—" : (pnlNum >= 0 ? "+" : "") + pnlNum.toFixed(2);
+    const pctStr = pctNum == null ? "" : ` (${(pctNum >= 0 ? "+" : "") + pctNum.toFixed(2)}%)`;
+    return `<span class="${cls}">${pnlStr}${pctStr}</span>`;
+  }
+
+  async function renderPositions() {
+    const body = document.getElementById("positionsBody");
+    const longPill = document.getElementById("posLongPill");
+    const shortPill = document.getElementById("posShortPill");
+    if (!body) return;
+    try {
+      const r = await api("/api/positions");
+      const list = Array.isArray(r) ? r : (r.items || r.positions || []);
+      if (!list.length) {
+        body.innerHTML = `<tr><td colspan="9" class="gq-empty">暂无数据</td></tr>`;
+        if (longPill)  longPill.textContent  = "多: —";
+        if (shortPill) shortPill.textContent = "空: —";
+        return;
+      }
+      let longCnt = 0, shortCnt = 0;
+      body.innerHTML = list.map(row => {
+        const symbol = _posCell(row, ["symbol", "instrument", "instId", "pair"]);
+        const qtyRaw = row.qty ?? row.position_amt ?? row.positionAmt ?? row.size ?? row.contracts ?? null;
+        const qty = qtyRaw == null ? "—" : Number(qtyRaw).toLocaleString("en-US", { maximumFractionDigits: 4 });
+        const side = String(row.side || row.position_side || (Number(qtyRaw || 0) >= 0 ? "LONG" : "SHORT")).toUpperCase();
+        if (side === "LONG" || side === "BUY") longCnt++;
+        else if (side === "SHORT" || side === "SELL") shortCnt++;
+        const entry  = _posCell(row, ["entry_price", "entryPrice", "avg_price", "avgPrice"], v => Number(v).toLocaleString("en-US", { maximumFractionDigits: 6 }));
+        const mark   = _posCell(row, ["mark_price", "markPrice", "last_price", "lastPrice"],  v => Number(v).toLocaleString("en-US", { maximumFractionDigits: 6 }));
+        const liq    = _posCell(row, ["liq_price", "liquidation_price", "liquidationPrice"], v => Number(v).toLocaleString("en-US", { maximumFractionDigits: 6 }));
+        const margin = _posCell(row, ["margin", "initial_margin", "isolatedMargin", "positionInitialMargin"], v => Number(v).toLocaleString("en-US", { maximumFractionDigits: 4 }));
+        const mratio = _posCell(row, ["margin_ratio", "marginRatio", "maintenanceMarginRatio"], v => (Number(v) * (Number(v) <= 1 ? 100 : 1)).toFixed(2) + "%");
+        const realized = _posCell(row, ["realized_pnl", "realizedPnl", "realisedPnl"], v => Number(v).toFixed(2));
+        return `<tr>
+          <td><strong>${fmt.esc(symbol)}</strong>
+              <span class="gq-pill ${(side === "LONG" || side === "BUY") ? "gq-pill--up" : "gq-pill--down"}" style="margin-left:6px">${(side === "LONG" || side === "BUY") ? "多" : "空"}</span></td>
+          <td class="gq-mono">${fmt.esc(qty)}</td>
+          <td class="gq-mono">${fmt.esc(entry)}</td>
+          <td class="gq-mono">${fmt.esc(mark)}</td>
+          <td class="gq-mono">${fmt.esc(liq)}</td>
+          <td class="gq-mono">${fmt.esc(margin)}</td>
+          <td class="gq-mono">${fmt.esc(mratio)}</td>
+          <td class="gq-mono">${fmt.esc(realized)}</td>
+          <td>${_posPnlCell(row)}</td>
+        </tr>`;
+      }).join("");
+      if (longPill)  longPill.textContent  = "多: " + longCnt;
+      if (shortPill) shortPill.textContent = "空: " + shortCnt;
+    } catch (e) {
+      body.innerHTML = `<tr><td colspan="9" class="gq-empty">加载失败：${fmt.esc(e.message)}</td></tr>`;
+    }
+  }
+
+  // ============================================================
+  //  #positions · 操作记录 panel (events list)
+  // ============================================================
+  let _histPage = 1;
+  const HIST_LIMIT = 20;
+  function historyPage(delta) {
+    _histPage = Math.max(1, _histPage + delta);
+    loadHistory();
+  }
+  async function loadHistory() {
+    const body = document.getElementById("historyBody");
+    document.getElementById("histPageMeta").textContent = `第 ${_histPage} 页`;
+    try {
+      const r = await api(`/api/events?limit=${HIST_LIMIT}&offset=${(_histPage-1)*HIST_LIMIT}`);
+      const list = Array.isArray(r) ? r : (r.items || r.events || []);
+      if (!list.length) {
+        body.innerHTML = `<tr><td colspan="6" class="gq-empty">暂无数据</td></tr>`;
+        return;
+      }
+      body.innerHTML = list.map(ev => {
+        const action = (ev.action || ev.event_type || ev.type || "—").toString();
+        const cls = actionBadgeCls(action);
+        const sideRaw = (ev.side || ev.direction || "").toString().toUpperCase();
+        const sideHtml = sideRaw === "BUY" || sideRaw === "LONG"
+          ? '<span class="gq-pill gq-pill--up">' + fmt.esc(sideRaw || "—") + '</span>'
+          : sideRaw === "SELL" || sideRaw === "SHORT"
+          ? '<span class="gq-pill gq-pill--down">' + fmt.esc(sideRaw || "—") + '</span>'
+          : fmt.esc(sideRaw || "—");
+        return `<tr>
+          <td>${fmt.esc(fmt.ts(ev.ts || ev.timestamp || ev.created_at))}</td>
+          <td><span class="gq-pill ${cls}">${fmt.esc(actionLabel(action))}</span></td>
+          <td><strong>${fmt.esc(ev.symbol || ev.instrument || "—")}</strong></td>
+          <td>${sideHtml}</td>
+          <td>${fmt.esc(ev.qty != null ? ev.qty : (ev.quantity ?? "—"))}</td>
+          <td>${fmt.esc(ev.price != null ? ev.price : "—")}</td>
+        </tr>`;
+      }).join("");
+    } catch (e) {
+      body.innerHTML = `<tr><td colspan="6" class="gq-empty">加载失败：${fmt.esc(e.message)}</td></tr>`;
+    }
+  }
+  function actionLabel(a) {
+    const k = a.toLowerCase();
+    if (k.includes("open"))   return "开仓";
+    if (k.includes("add") || k.includes("increase"))  return "加仓";
+    if (k.includes("reduce") || k.includes("trim"))   return "减仓";
+    if (k.includes("close"))  return "平仓";
+    return a;
+  }
+  function actionBadgeCls(a) {
+    const k = a.toLowerCase();
+    if (k.includes("open"))   return "gq-pill--up";
+    if (k.includes("add"))    return "gq-pill--warn";
+    if (k.includes("reduce")) return "gq-pill--neutral";
+    if (k.includes("close"))  return "gq-pill--down";
+    return "gq-pill--neutral";
+  }
+
+  // ============================================================
+  //  #system
+  // ============================================================
+  async function loadSystem() {
+    try {
+      const s = await api("/api/status");
+      document.getElementById("sysRun").textContent    = s.running ? "运行中" : "已停止";
+      document.getElementById("sysConn").textContent   = s.connected ? "已连接" : "未连接";
+      document.getElementById("sysSource").textContent = s.leader_source || s.source || "—";
+      document.getElementById("sysUptime").textContent = s.uptime_seconds != null ? Math.round(s.uptime_seconds/60) + " 分钟" : "—";
+      const dot = document.getElementById("sideStatus");
+      dot.className = "gq-status-dot " + (s.running && s.connected ? "" : (s.running ? "idle" : "err"));
+      document.getElementById("sideStatusText").textContent = s.running ? (s.connected ? "系统运行正常" : "已运行 · 数据源断开") : "引擎已停止";
+    } catch (e) {
+      document.getElementById("sysRun").textContent = "—";
+      document.getElementById("sysConn").textContent = "—";
+      document.getElementById("sysSource").textContent = "—";
+    }
+    try {
+      const c = await api("/api/config");
+      document.getElementById("cfgLeader").value = c.leader_id || c.portfolio_id || "";
+      document.getElementById("cfgCookie").value = c.cookie || "";
+      const e1 = document.getElementById("tglEnforced");
+      const e2 = document.getElementById("tglEnabled");
+      if (e1) e1.checked = !!c.subscription_enforced;
+      if (e2) e2.checked = !!c.enabled;
+    } catch (e) {}
+  }
+  async function toggleSysFlag(key, el) {
+    const next = !!el.checked;
+    try {
+      await api("/api/config", { method: "PATCH", body: JSON.stringify({ [key]: next }) });
+      toast("已更新：" + key);
+    } catch (e) {
+      el.checked = !next;
+      toast("更新失败：" + e.message);
+    }
+  }
+  async function saveSystemCfg() {
+    try {
+      await api("/api/config", {
+        method: "PATCH",
+        body: JSON.stringify({
+          leader_id: document.getElementById("cfgLeader").value.trim(),
+          cookie:    document.getElementById("cfgCookie").value.trim(),
+        }),
+      });
+      toast("配置已保存");
+    } catch (e) { toast("保存失败：" + e.message); }
+  }
+
+  // ---------- go ----------
+  bootstrap();
+  </script>
+</body>
+</html>
