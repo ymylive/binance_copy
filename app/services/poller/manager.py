@@ -159,6 +159,21 @@ class PollerManager:
             return 0.0
         return self._calculate_leader_equity(state)
 
+    def equity_history(self, project_id: str, limit: int = 30) -> list[float]:
+        """Return the last `limit` leader-equity samples for a project.
+
+        Used by /api/projects to populate the trader-card sparkline. Returns
+        an empty list when the project has no recorded samples yet (e.g. the
+        poller has not completed a detail refresh, or the project is paused).
+        """
+        state = self._states.get(project_id)
+        if not state or not state.equity_history:
+            return []
+        if limit <= 0:
+            return []
+        samples = list(state.equity_history)
+        return samples[-limit:]
+
     def _calculate_leader_equity(self, state: ProjectState) -> float:
         """Calculate leader equity from state"""
         if state.leader_margin > 0:
@@ -210,6 +225,12 @@ class PollerManager:
         if isinstance(position_show, (bool, int, float)):
             state.position_show = bool(position_show)
         state.last_detail_refresh = now
+        # Record the latest leader equity sample so the trader-card sparkline
+        # has real data to render. Skip zeros to avoid polluting the series
+        # with empty/initial states.
+        latest_equity = self._calculate_leader_equity(state)
+        if latest_equity > 0:
+            state.equity_history.append(float(latest_equity))
 
     async def _refresh_follower_equity(
         self,

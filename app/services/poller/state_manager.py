@@ -71,6 +71,13 @@ class AccountLeaderState:
     # Round 2: surfaced via /api/leaders and /api/health/poller for ops UX.
     poll_latencies: Deque[float] = field(default_factory=lambda: deque(maxlen=20))
 
+    # Rolling window of leader equity samples (margin or AUM, whichever is
+    # available) used to render the trader-card sparkline + recent PnL %.
+    # Each entry is the latest non-zero leader equity seen during a
+    # _refresh_detail tick. Bounded to the last 30 samples so memory stays
+    # constant per project.
+    equity_history: Deque[float] = field(default_factory=lambda: deque(maxlen=30))
+
 
 # Backward compatibility alias
 ProjectState = AccountLeaderState

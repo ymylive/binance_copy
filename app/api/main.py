@@ -898,6 +898,33 @@ async def list_projects() -> List[Dict[str, object]]:
     for project in state.list_projects():
         payload = project.model_dump()
         payload["project_id"] = state.project_key(project)
+        # === Galaxy trader-card extension ===
+        # Surface display fields + sparkline so the /trader cards in
+        # kzt.html can render without a second round-trip. The underlying
+        # ProjectConfig schema is NOT changed; everything here is derived
+        # from existing config + live poller state.
+        leader_id = payload.get("leader_id") or payload.get("portfolio_id") or ""
+        payload["display_name"] = (
+            payload.get("alias") or (str(leader_id)[:8] if leader_id else "Anon")
+        )
+        payload["avatar_url"] = (
+            f"https://api.dicebear.com/7.x/identicon/svg?seed={leader_id}"
+            if leader_id
+            else ""
+        )
+        try:
+            hist = state.poller.equity_history(payload["project_id"], limit=30)
+        except (AttributeError, KeyError):
+            hist = []
+        sparkline = [float(p) for p in hist] if hist else []
+        payload["sparkline"] = sparkline
+        if len(sparkline) >= 2 and sparkline[0]:
+            base = sparkline[0]
+            payload["total_pnl_pct"] = round(
+                (sparkline[-1] - base) / base * 100, 2
+            )
+        else:
+            payload["total_pnl_pct"] = None
         items.append(payload)
     return items
 
