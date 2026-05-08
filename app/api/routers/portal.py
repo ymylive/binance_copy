@@ -118,6 +118,12 @@ def _public_user(user: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _mask_key(s: Optional[str]) -> str:
+    if not s or len(s) < 8:
+        return "******"
+    return s[:4] + "******" + s[-4:]
+
+
 def _resolve_token(
     authorization: Optional[str],
     cookie_token: Optional[str],
@@ -1301,12 +1307,6 @@ async def bind_business_api_key(
     return _ok(updated or biz)
 
 
-def _mask_key(s: Optional[str]) -> str:
-    if not s or len(s) < 8:
-        return "******"
-    return s[:4] + "******" + s[-4:]
-
-
 @router.get("/account/{biz_id}/detail")
 async def account_detail(
     biz_id: str,
@@ -1339,8 +1339,8 @@ async def account_detail(
                     exchange = getattr(acct, "exchange", "") or exchange
                     active = bool(getattr(acct, "enabled", False))
                     break
-        except Exception:  # pragma: no cover - best effort
-            pass
+        except Exception as e:
+            logger.warning("account_detail: load_trade_config failed for biz=%s: %s", biz_id, e)
 
     expire_ms = int(biz.get("expirationTimestamp") or 0)
     now_ms = int(time.time() * 1000)
@@ -1362,6 +1362,7 @@ async def account_detail(
         "biz_id": biz_id,
         "alias": biz.get("alias") or "账户",
         "exchange": exchange,
+        # bindingUid is apiKey[:8] slug from bind_business, NOT the exchange's real UID.
         "uid": biz.get("bindingUid"),
         "ip_whitelist": biz.get("ipWhitelist") or [],
         "api_key_masked": _mask_key(api_key),

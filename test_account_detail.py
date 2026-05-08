@@ -14,7 +14,7 @@ BIZ_ID = os.getenv("REAL_BIZ_ID", "")
 def test_account_detail_shape():
     if not TOKEN or not BIZ_ID:
         print("SKIP: REAL_USER_TOKEN and REAL_BIZ_ID env not set")
-        return
+        return False
     req = urllib.request.Request(
         f"http://127.0.0.1:8000/api/portal/account/{BIZ_ID}/detail",
         headers={"Authorization": f"Bearer {TOKEN}"},
@@ -32,7 +32,8 @@ def test_account_detail_shape():
         assert k in d, f"missing field: {k}"
     assert d["api_key_masked"].count("*") >= 4, "API key must be masked"
     assert isinstance(d["equity_30d"], list)
+    return True
 
 if __name__ == "__main__":
-    test_account_detail_shape()
-    print("PASS")
+    if test_account_detail_shape():
+        print("PASS")
