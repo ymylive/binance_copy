@@ -115,6 +115,11 @@ class AppConfig(BaseModel):
     leaders: List[LeaderConfig] = Field(default_factory=list)
     signal: SignalConfig = Field(default_factory=SignalConfig)
     onchain: OnchainConfig = Field(default_factory=OnchainConfig)
+    # When true, every follower-side order is gated on an active portal
+    # subscription (Business record) for the target trade account. Defaults
+    # to false to preserve existing single-user behavior; the portal sets
+    # this true once at least one Business is bound to a TradingAccount.
+    subscription_enforced: bool = False
 
 
 class ConfigPatch(BaseModel):

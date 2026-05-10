@@ -34,6 +34,19 @@ from ..services.state import AppState
 
 INDEX_PATH = STATIC_DIR / "index.html"
 FAVICON_PATH = STATIC_DIR / "favicon.svg"
+LANDING_PATH = STATIC_DIR / "landing.html"
+REFERRAL_PATH = STATIC_DIR / "referral.html"
+MALL_PATH = STATIC_DIR / "mall.html"
+WALLET_PATH = STATIC_DIR / "wallet.html"
+PROFILE_PATH = STATIC_DIR / "profile.html"
+TUTORIAL_PATH = STATIC_DIR / "tutorial.html"
+LOGIN_PATH = STATIC_DIR / "login.html"
+REGISTER_PATH = STATIC_DIR / "register.html"
+FORGOT_PATH = STATIC_DIR / "forgot.html"
+KZT_PATH = STATIC_DIR / "kzt.html"
+ADMIN_PATH = STATIC_DIR / "admin.html"
+ADMIN_SETUP_PATH = STATIC_DIR / "admin-setup.html"
+ADMIN_RECOVER_PATH = STATIC_DIR / "admin-recover.html"
 
 config_store = ConfigStore()
 state = AppState(config_store)
@@ -206,11 +219,35 @@ from .routers import leaders as _leaders_router  # noqa: E402
 from .routers import signals as _signals_router  # noqa: E402
 from .routers import health as _health_router  # noqa: E402
 from .routers import metrics as _metrics_router  # noqa: E402
+from .routers import portal as _portal_router  # noqa: E402
+from ..services.portal_store import get_portal_store  # noqa: E402
 
 app.include_router(_leaders_router.router, prefix="/api", tags=["leaders"])
 app.include_router(_signals_router.router, prefix="/api", tags=["signals"])
 app.include_router(_health_router.router, prefix="/api", tags=["health"])
 app.include_router(_metrics_router.router, prefix="/api", tags=["metrics"])
+app.include_router(_portal_router.router, prefix="/api", tags=["portal"])
+
+# Paths under /api/portal/* that must work pre-login. The auth middleware
+# below skips the bearer-token check for these specific routes.
+_PORTAL_PUBLIC_PATHS = {
+    "/api/portal/auth/login",
+    "/api/portal/auth/register",
+    "/api/portal/auth/forgot-password/send-code",
+    "/api/portal/auth/forgot-password/reset",
+    "/api/portal/home/tutorial",
+    # Bind-token wizard: the route's own auth is the one-shot token in the
+    # request body (verified by portal_store.verify_pending_code), so the
+    # global Bearer-auth gate has to step out of the way for this path.
+    "/api/portal/binance/cookies",
+    # First-run admin setup + security-question recovery. setup/init is
+    # only callable while the store reports needsSetup==true; recover/*
+    # validates the email + answers itself, so neither needs a session.
+    "/api/portal/admin/setup/status",
+    "/api/portal/admin/setup/init",
+    "/api/portal/admin/recover/questions",
+    "/api/portal/admin/recover/reset",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -236,6 +273,12 @@ async def _api_auth_middleware(request: Request, call_next):
     if path == "/api/signals/stream":
         # Token check is enforced inside the SSE route handler via query param.
         return await call_next(request)
+    if path == "/api/portal/dashboard/signals/stream":
+        # Same EventSource pattern: token via ?token=, verified in handler.
+        return await call_next(request)
+    # Public portal routes: login/register/tutorial must work pre-login.
+    if path in _PORTAL_PUBLIC_PATHS:
+        return await call_next(request)
     if not API_TOKEN:
         return JSONResponse(
             status_code=503,
@@ -244,12 +287,24 @@ async def _api_auth_middleware(request: Request, call_next):
     auth_header = request.headers.get("authorization") or request.headers.get(
         "Authorization"
     )
-    if not auth_header or not auth_header.lower().startswith("bearer "):
-        return _unauthorized()
-    presented = auth_header.split(" ", 1)[1].strip()
-    if not secrets.compare_digest(presented, API_TOKEN):
-        return _unauthorized()
-    return await call_next(request)
+    presented = ""
+    if auth_header and auth_header.lower().startswith("bearer "):
+        presented = auth_header.split(" ", 1)[1].strip()
+    # Admin API_TOKEN unlocks every /api/* route.
+    if presented and secrets.compare_digest(presented, API_TOKEN):
+        return await call_next(request)
+    # /api/portal/* additionally accepts a per-user portal session token,
+    # supplied either via Bearer header or the portal_session cookie.
+    if path.startswith("/api/portal/"):
+        candidate = presented or (request.cookies.get("portal_session") or "")
+        if candidate:
+            try:
+                user = get_portal_store().get_session_user(candidate)
+            except Exception:  # pragma: no cover - defensive
+                user = None
+            if user:
+                return await call_next(request)
+    return _unauthorized()
 
 
 # ---------------------------------------------------------------------------
@@ -318,6 +373,67 @@ async def on_startup() -> None:
     await state.start()
 
 
+@app.on_event("startup")
+async def _sweep_expired_subscriptions_loop() -> None:
+    """Hourly sweep: portal Businesses past `expirationTimestamp` get marked
+    expired and any TradingAccount they linked to (`tradeAccountId`) is
+    disabled. Failure-isolated so a single bad tick cannot kill the loop."""
+    import asyncio
+
+    async def loop() -> None:
+        from ..services.portal_store import get_portal_store
+        store = get_portal_store()
+        while True:
+            try:
+                expired = store.sweep_expired()
+                if expired:
+                    cfg = load_trade_config()
+                    changed = False
+                    for biz in expired:
+                        tid = biz.get("tradeAccountId")
+                        if not tid:
+                            continue
+                        for acct in cfg.accounts:
+                            if acct.account_id == tid and acct.enabled:
+                                acct.enabled = False
+                                changed = True
+                    if changed:
+                        save_trade_config(cfg)
+                        logger.info(
+                            "sweep_expired disabled %d trade accounts",
+                            len(expired),
+                        )
+            except Exception:
+                logger.exception("sweep_expired tick failed")
+            await asyncio.sleep(3600)
+
+    asyncio.create_task(loop())
+
+
+@app.on_event("startup")
+async def _start_telegram_notifier() -> None:
+    """Bring up the Telegram notifier subscriber once the engine is up."""
+    try:
+        from ..services.telegram_notifier import get_notifier
+        get_notifier().start(state)
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("telegram notifier start failed")
+
+
+@app.get("/.well-known/galaxy-sse")
+async def well_known_galaxy_sse(
+    request: Request,
+    token: str = "",
+):
+    """Server-Sent Events stream mirrored under /.well-known/ to bypass
+    Cloudflare's edge buffering. The path lives outside /api/* so the
+    /api/* middleware does not apply; the SSE handler enforces auth via
+    `?token=...` itself (same model as /api/signals/stream).
+    """
+    from .routers.portal import dashboard_signals_stream  # local import
+    return await dashboard_signals_stream(request, token=token)
+
+
 @app.on_event("shutdown")
 async def on_shutdown() -> None:
     await state.stop()
@@ -325,7 +441,101 @@ async def on_shutdown() -> None:
 
 @app.get("/")
 async def index() -> FileResponse:
+    return FileResponse(LANDING_PATH)
+
+
+@app.get("/console")
+async def console() -> FileResponse:
     return FileResponse(INDEX_PATH)
+
+
+@app.get("/referral")
+async def referral_page() -> FileResponse:
+    return FileResponse(REFERRAL_PATH)
+
+
+@app.get("/mall")
+async def mall_page() -> FileResponse:
+    return FileResponse(MALL_PATH)
+
+
+@app.get("/wallet")
+async def wallet_page() -> FileResponse:
+    return FileResponse(WALLET_PATH)
+
+
+@app.get("/profile")
+async def profile_page() -> FileResponse:
+    return FileResponse(PROFILE_PATH)
+
+
+@app.get("/tutorial")
+async def tutorial_page() -> FileResponse:
+    return FileResponse(TUTORIAL_PATH)
+
+
+@app.get("/login")
+async def login_page() -> FileResponse:
+    return FileResponse(LOGIN_PATH)
+
+
+@app.get("/register")
+async def register_page() -> FileResponse:
+    return FileResponse(REGISTER_PATH)
+
+
+@app.get("/forgot")
+async def forgot_page() -> FileResponse:
+    return FileResponse(FORGOT_PATH)
+
+
+@app.get("/sign")
+async def sign_landing(code: str = "") -> Any:
+    """Referral invite landing — `https://copy.cornna.xyz/sign?code=1401`.
+
+    Stashes the code in localStorage via a tiny inline document then
+    redirects the visitor to /register?code=... so the form prefills the
+    invitation field. We use an HTML hop instead of a 302 because the code
+    is most useful when persisted client-side: visitors who bounce to /login
+    first and only register later still get attribution credit.
+    """
+    safe_code = "".join(ch for ch in (code or "")[:32] if ch.isalnum() or ch in "-_")
+    html = (
+        "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">"
+        "<title>正在跳转 · 银河量化</title>"
+        "<meta http-equiv=\"refresh\" content=\"0; url=/register?code="
+        + safe_code
+        + "\"></head><body style=\"background:#050608;color:#f4f6f8;"
+        "font-family:-apple-system,system-ui,sans-serif;padding:48px;text-align:center\">"
+        "<p>正在跳转到注册页 …</p>"
+        "<script>try{localStorage.setItem('inviteCode',"
+        + repr(safe_code)
+        + ");}catch(e){}location.replace('/register?code="
+        + safe_code
+        + "');</script></body></html>"
+    )
+    from fastapi.responses import HTMLResponse  # local import
+    return HTMLResponse(html)
+
+
+@app.get("/kzt")
+async def kzt_page() -> FileResponse:
+    return FileResponse(KZT_PATH)
+
+
+@app.get("/admin")
+async def admin_page() -> FileResponse:
+    return FileResponse(ADMIN_PATH)
+
+
+@app.get("/admin-setup")
+async def admin_setup_page() -> FileResponse:
+    return FileResponse(ADMIN_SETUP_PATH)
+
+
+@app.get("/admin-recover")
+async def admin_recover_page() -> FileResponse:
+    return FileResponse(ADMIN_RECOVER_PATH)
 
 
 @app.get("/favicon.ico")
