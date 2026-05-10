@@ -24,3 +24,28 @@ okx_trade_config.json
 vps_config.json
 vps_info.txt
 leader_headers.json
+
+# macOS
+.DS_Store
+
+# _design 抓取/调试残留物（凭证、node_modules、debug 截图、历史 mockup）
+_design/node_modules/
+_design/galaxy_live/auth.json
+_design/galaxy_live/_debug*.mjs
+_design/galaxy_live/_discover.mjs
+_design/galaxy_live/debug-*.png
+_design/galaxy_live/discoverhttps_*.html
+_design/galaxy_live/discoverhttps_*.png
+_design/galaxy_live/page-dashboard*
+_design/galaxy_live/network.log
+_design/galaxyq_recon/token.txt
+_design/galaxyq_recon/depth/
+_design/galaxyq_recon/pages/
+# 旧 Copy Sync 深色 mockup（已被银河浅色路线取代）
+_design/_capture*.mjs
+_design/_e2e_v07.mjs
+_design/copy-sync-console-v*.html
+_design/preview-*.png
+
+# 早期 console 预览图（已被 _design/galaxy_live/ 替代）
+app/static/preview-console-*.png
