@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>注册 · 银河量化</title>
+  <link rel="stylesheet" href="/static/portal.css?v=20260501-01" />
+  <link rel="icon" href="/favicon.ico" />
+  <style>
+    body.signup-page {
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      position: relative;
+      overflow-x: hidden;
+    }
+    body.signup-page::before {
+      content: "";
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,.55), transparent 50%),
+        radial-gradient(1px 1px at 28% 64%, rgba(255,255,255,.40), transparent 50%),
+        radial-gradient(1px 1px at 46% 32%, rgba(255,255,255,.45), transparent 50%),
+        radial-gradient(1px 1px at 62% 78%, rgba(255,255,255,.35), transparent 50%),
+        radial-gradient(1px 1px at 80% 22%, rgba(255,255,255,.50), transparent 50%),
+        radial-gradient(1px 1px at 88% 60%, rgba(255,255,255,.40), transparent 50%),
+        radial-gradient(1px 1px at 18% 88%, rgba(255,255,255,.30), transparent 50%),
+        radial-gradient(1px 1px at 72% 8%, rgba(255,255,255,.45), transparent 50%);
+      background-size: 700px 700px;
+      pointer-events: none; opacity: .6; z-index: 0;
+    }
+    body.signup-page::after {
+      content: "";
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse 90% 60% at 50% -10%, rgba(43, 216, 112, 0.10), transparent 60%),
+        radial-gradient(ellipse 50% 40% at 88% 50%, rgba(94, 92, 230, 0.08), transparent 60%);
+      pointer-events: none; z-index: 0;
+    }
+
+    .signup-shell {
+      position: relative; z-index: 1;
+      width: min(440px, 92vw);
+      margin: 60px auto 60px;
+      text-align: center;
+    }
+    .brand-stack {
+      display: flex; flex-direction: column; align-items: center; gap: 14px;
+      margin-bottom: 28px;
+    }
+    .brand-badge {
+      width: 72px; height: 72px; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #6cf2a4, #1aa856 65%, #0d6638);
+      color: #04130a;
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: 0.12em;
+      display: grid; place-items: center;
+      box-shadow: 0 0 36px rgba(43, 216, 112, 0.4);
+    }
+    .brand-wordmark {
+      font-family: var(--display);
+      font-size: 22px;
+      letter-spacing: 0.06em;
+      color: var(--text);
+    }
+    .signup-title {
+      font-family: var(--display);
+      font-size: 48px;
+      letter-spacing: 0.04em;
+      margin: 0 0 26px;
+      color: var(--text);
+    }
+
+    .field { position: relative; margin-bottom: 14px; }
+    .field input {
+      width: 100%;
+      background: var(--bg-3);
+      border: 1px solid var(--line-2);
+      color: var(--text);
+      padding: 14px 16px 14px 46px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-family: var(--sans);
+      outline: none;
+      transition: border-color .18s, box-shadow .18s;
+    }
+    .field input::placeholder { color: var(--text-3); }
+    .field input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(43, 216, 112, 0.18);
+    }
+    .field svg.icon {
+      position: absolute;
+      left: 16px; top: 50%;
+      transform: translateY(-50%);
+      width: 18px; height: 18px;
+      color: var(--text-3);
+      pointer-events: none;
+    }
+    .field.has-error input { border-color: var(--danger); }
+
+    .strength {
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.05);
+      margin: -6px 4px 14px;
+      overflow: hidden;
+      position: relative;
+    }
+    .strength::before {
+      content: "";
+      position: absolute; left: 0; top: 0; bottom: 0;
+      width: var(--w, 0%);
+      background: var(--c, var(--danger));
+      transition: width .25s, background .25s;
+    }
+    .strength-label {
+      text-align: left;
+      font-size: 11.5px;
+      color: var(--text-3);
+      margin: -8px 4px 12px;
+      min-height: 14px;
+    }
+
+    .agree-row {
+      display: flex; align-items: flex-start; gap: 10px;
+      text-align: left;
+      margin: 6px 4px 18px;
+      font-size: 12.5px;
+      color: var(--text-2);
+    }
+    .agree-row input { margin-top: 3px; }
+    .agree-row a { color: var(--accent); }
+
+    .error-msg {
+      color: var(--danger);
+      font-size: 12.5px;
+      text-align: left;
+      margin: -6px 4px 14px;
+      min-height: 16px;
+      display: none;
+    }
+    .error-msg.show { display: block; }
+
+    .btn-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .btn-back {
+      padding: 14px 18px;
+      border-radius: 999px;
+      background: var(--bg-3);
+      border: 1px solid var(--line-2);
+      color: var(--text);
+      font-size: 14px;
+      cursor: pointer;
+      transition: all .18s;
+    }
+    .btn-back:hover { background: var(--bg-2); border-color: var(--accent); color: var(--accent); }
+    .btn-submit {
+      display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+      padding: 14px 18px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #04130a;
+      font-weight: 600;
+      font-size: 14px;
+      border: none;
+      cursor: pointer;
+      transition: background .18s, transform .18s;
+    }
+    .btn-submit:hover { background: #38e87a; transform: translateY(-1px); }
+    .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .btn-submit svg { width: 16px; height: 16px; }
+
+    .links-row {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 18px;
+      font-size: 12.5px;
+      color: var(--text-3);
+    }
+    .links-row a {
+      color: var(--text-3);
+      transition: color .18s;
+    }
+    .links-row a:hover { color: var(--accent); }
+
+    .invite-banner {
+      background: rgba(43, 216, 112, 0.10);
+      border: 1px solid rgba(43, 216, 112, 0.32);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 16px;
+      font-size: 12.5px;
+      color: var(--accent);
+      text-align: left;
+      display: none;
+    }
+    .invite-banner.show { display: block; }
+
+    .home-corner {
+      position: fixed;
+      top: 22px; left: 28px;
+      display: flex; align-items: center; gap: 10px;
+      color: var(--text-2);
+      font-size: 13px;
+      z-index: 2;
+      opacity: 0.7;
+      transition: opacity .18s;
+    }
+    .home-corner:hover { opacity: 1; color: var(--accent); }
+    .home-corner .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #6cf2a4, #1aa856);
+      box-shadow: 0 0 8px rgba(43,216,112,.6);
+    }
+
+    @media (max-width: 480px) {
+      .btn-row { grid-template-columns: 1fr; }
+      .signup-title { font-size: 36px; }
+    }
+  </style>
+</head>
+<body class="signup-page">
+
+<a class="home-corner" href="/"><span class="dot"></span><span>返回主页</span></a>
+
+<div class="signup-shell">
+  <div class="brand-stack">
+    <div class="brand-badge">VEGA</div>
+    <div class="brand-wordmark">GalaxyQuantitative</div>
+  </div>
+
+  <h1 class="signup-title">注册</h1>
+
+  <div class="invite-banner" id="inviteBanner">
+    <strong>邀请码已自动填入:</strong> <span id="inviteBannerCode">—</span>
+  </div>
+
+  <form id="signupForm" novalidate autocomplete="on">
+    <div class="field" id="fieldEmail">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="5" width="18" height="14" rx="2"/>
+        <path d="M3 7l9 6 9-6"/>
+      </svg>
+      <input id="emailInput" name="email" type="email" placeholder="邮箱" required autocomplete="email" />
+    </div>
+
+    <div class="field" id="fieldPwd">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="4" y="10" width="16" height="11" rx="2"/>
+        <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+      </svg>
+      <input id="pwdInput" name="password" type="password" placeholder="设置登录密码 (至少 6 位)" required autocomplete="new-password" />
+    </div>
+    <div class="strength" id="strengthBar"></div>
+    <div class="strength-label" id="strengthLabel">&nbsp;</div>
+
+    <div class="field" id="fieldPwd2">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 12l2 2 4-4"/>
+        <rect x="4" y="10" width="16" height="11" rx="2"/>
+        <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+      </svg>
+      <input id="pwd2Input" name="password2" type="password" placeholder="再次输入密码" required autocomplete="new-password" />
+    </div>
+
+    <div class="field" id="fieldInvite">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20 12V8H6a2 2 0 1 1 0-4h12v4"/>
+        <path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/>
+        <path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>
+      </svg>
+      <input id="inviteInput" name="invitationCode" type="text" placeholder="邀请码 (可选)" autocomplete="off" />
+    </div>
+
+    <label class="agree-row">
+      <input type="checkbox" id="agreeBox" checked />
+      <span>我已阅读并同意 <a href="/tutorial" target="_blank">服务条款</a> 与 <a href="/tutorial" target="_blank">隐私政策</a></span>
+    </label>
+
+    <div class="error-msg" id="errMsg"></div>
+
+    <div class="btn-row">
+      <button type="button" class="btn-back" id="backBtn">已有账号 · 登录</button>
+      <button type="submit" class="btn-submit" id="submitBtn">
+        <span>立即注册</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 12h14"/>
+          <path d="M13 5l7 7-7 7"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="links-row">
+      <a href="/forgot">忘记密码</a>
+      <a href="/login">返回登录</a>
+    </div>
+  </form>
+</div>
+
+<script>
+  const form = document.getElementById("signupForm");
+  const emailEl = document.getElementById("emailInput");
+  const pwdEl = document.getElementById("pwdInput");
+  const pwd2El = document.getElementById("pwd2Input");
+  const inviteEl = document.getElementById("inviteInput");
+  const errEl = document.getElementById("errMsg");
+  const submitBtn = document.getElementById("submitBtn");
+  const strengthBar = document.getElementById("strengthBar");
+  const strengthLabel = document.getElementById("strengthLabel");
+  const agreeBox = document.getElementById("agreeBox");
+
+  function setError(msg) {
+    if (!msg) { errEl.textContent = ""; errEl.classList.remove("show"); return; }
+    errEl.textContent = msg; errEl.classList.add("show");
+  }
+
+  // Pre-fill invitation code from ?code=xxxx OR /sign?code=xxxx redirects.
+  // Fallback to localStorage if a previous /sign?code=xxx visit stashed it.
+  (function prefillInvite() {
+    let code = "";
+    const params = new URLSearchParams(location.search);
+    code = (params.get("code") || params.get("invite") || "").trim();
+    if (!code) {
+      try { code = (localStorage.getItem("inviteCode") || "").trim(); } catch (_) {}
+    }
+    if (code) {
+      inviteEl.value = code;
+      const banner = document.getElementById("inviteBanner");
+      document.getElementById("inviteBannerCode").textContent = code;
+      banner.classList.add("show");
+    }
+  })();
+
+  // Lightweight password strength meter (length + class diversity).
+  function pwdStrength(s) {
+    let score = 0;
+    if (!s) return { score: 0, label: "" };
+    if (s.length >= 6) score++;
+    if (s.length >= 10) score++;
+    if (/[A-Z]/.test(s) && /[a-z]/.test(s)) score++;
+    if (/\d/.test(s)) score++;
+    if (/[^A-Za-z0-9]/.test(s)) score++;
+    const labels = ["很弱", "弱", "一般", "强", "很强"];
+    return {
+      score,
+      label: labels[Math.max(0, Math.min(score, labels.length) - 1)] || "",
+    };
+  }
+  pwdEl.addEventListener("input", () => {
+    const v = pwdEl.value;
+    const s = pwdStrength(v);
+    const pct = (s.score / 5) * 100;
+    const colors = ["#ff5757", "#ff9f43", "#ffd60a", "#9ae66e", "#2bd870"];
+    strengthBar.style.setProperty("--w", pct + "%");
+    strengthBar.style.setProperty("--c", colors[Math.max(0, Math.min(s.score, colors.length) - 1)] || "var(--danger)");
+    strengthLabel.textContent = v ? `密码强度: ${s.label}` : " ";
+  });
+
+  document.getElementById("backBtn").addEventListener("click", () => location.href = "/login");
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    setError("");
+
+    const email = emailEl.value.trim();
+    const password = pwdEl.value;
+    const password2 = pwd2El.value;
+    const invitationCode = inviteEl.value.trim();
+
+    if (!email || !email.includes("@")) {
+      document.getElementById("fieldEmail").classList.add("has-error");
+      setError("请输入有效邮箱地址");
+      emailEl.focus();
+      return;
+    }
+    document.getElementById("fieldEmail").classList.remove("has-error");
+
+    if (!password || password.length < 6) {
+      document.getElementById("fieldPwd").classList.add("has-error");
+      setError("密码至少 6 位");
+      pwdEl.focus();
+      return;
+    }
+    document.getElementById("fieldPwd").classList.remove("has-error");
+
+    if (password !== password2) {
+      document.getElementById("fieldPwd2").classList.add("has-error");
+      setError("两次输入的密码不一致");
+      pwd2El.focus();
+      return;
+    }
+    document.getElementById("fieldPwd2").classList.remove("has-error");
+
+    if (!agreeBox.checked) {
+      setError("请先勾选同意服务条款与隐私政策");
+      return;
+    }
+
+    submitBtn.disabled = true;
+    const span = submitBtn.querySelector("span");
+    const original = span.textContent;
+    span.textContent = "注册中...";
+
+    try {
+      const body = { email, password };
+      if (invitationCode) body.invitationCode = invitationCode;
+
+      const r = await fetch("/api/portal/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify(body),
+        credentials: "include",
+      });
+
+      let data = null;
+      try { data = await r.json(); } catch (_) {}
+      const envelopeFail = data && typeof data === "object" && "code" in data && data.code !== 0;
+
+      if (!r.ok || envelopeFail) {
+        const msg = (data && (data.message || data.error)) || `注册失败 (${r.status})`;
+        setError(msg);
+        return;
+      }
+
+      // Backend returns the same shape as login: {token, user}
+      const token = data && (data.token || (data.data && data.data.token));
+      const user = data && (data.user || (data.data && data.data.user));
+      if (token) {
+        try {
+          localStorage.setItem("appToken", token);
+          if (user) localStorage.setItem("appUser", JSON.stringify(user));
+          // Clean up any pending invite code now that we've used it.
+          localStorage.removeItem("inviteCode");
+        } catch (_) {}
+      }
+      // Land on the marketing portal home after sign-up.
+      location.href = "/";
+    } catch (err) {
+      setError("网络异常,请稍后重试");
+    } finally {
+      submitBtn.disabled = false;
+      span.textContent = original;
+    }
+  });
+</script>
+
+</body>
+</html>

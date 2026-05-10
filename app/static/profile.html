@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>个人中心 · 银河量化</title>
+  <link rel="stylesheet" href="/static/portal.css?v=20260501-01" />
+  <link rel="icon" href="/favicon.ico" />
+  <style>
+    /* ---------- Profile-specific ---------- */
+    .section-title {
+      font-family: var(--display);
+      font-size: 30px;
+      letter-spacing: 0.02em;
+      margin: 0 0 22px;
+    }
+    .section-title + .section-title { margin-top: 56px; }
+
+    /* Security cards */
+    .sec-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+      margin-bottom: 56px;
+    }
+    .sec-card {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      padding: 22px 22px;
+      background: linear-gradient(160deg, var(--bg-2), var(--bg-1));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-card);
+    }
+    .sec-icon {
+      flex: 0 0 56px;
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 32% 30%, #6e5dd8 0%, #3b2a86 55%, #110a30 100%);
+      box-shadow:
+        inset -6px -10px 14px rgba(0,0,0,0.55),
+        inset 5px 6px 12px rgba(255,255,255,0.10),
+        0 6px 20px rgba(58, 36, 138, 0.32);
+      position: relative;
+      display: grid; place-items: center;
+      color: rgba(255,255,255,0.85);
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: 0.04em;
+    }
+    .sec-icon::after {
+      /* faint ring to suggest a satellite/orbit */
+      content: "";
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      border: 1px dashed rgba(255,255,255,0.10);
+      transform: rotate(-18deg);
+    }
+    .sec-body { flex: 1; min-width: 0; }
+    .sec-title {
+      font-size: 15.5px;
+      color: var(--text);
+      font-weight: 600;
+      margin: 0 0 6px;
+    }
+    .sec-sub {
+      color: var(--text-3);
+      font-size: 12.5px;
+      line-height: 1.6;
+      margin: 0;
+    }
+    .sec-meta {
+      color: var(--text-2);
+      font-size: 12px;
+      margin-top: 6px;
+      font-family: var(--mono);
+      word-break: break-all;
+    }
+    .sec-pill {
+      flex: 0 0 auto;
+      padding: 8px 16px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #04130a;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: background 0.18s;
+      white-space: nowrap;
+    }
+    .sec-pill:hover { background: #38e87a; }
+
+    /* Login history table — rounded rows, no borders */
+    .ip-head, .ip-row {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr 1fr;
+      align-items: center;
+      gap: 16px;
+    }
+    .ip-head {
+      padding: 8px 28px 18px;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .ip-head > div { text-align: center; }
+    .ip-head > div:first-child { text-align: center; }
+    .ip-list { display: flex; flex-direction: column; gap: 14px; }
+    .ip-row {
+      padding: 18px 28px;
+      background: rgba(255,255,255,0.025);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      font-size: 13px;
+      text-align: center;
+    }
+    .ip-row .ip-cell {
+      font-family: var(--mono);
+      color: var(--text);
+      word-break: break-all;
+    }
+    .ip-row .ip-loc { color: var(--text-2); }
+    .ip-row .ip-ts { color: var(--text-2); font-family: var(--mono); }
+    .ip-empty {
+      padding: 36px;
+      text-align: center;
+      color: var(--text-3);
+      font-size: 13px;
+      background: rgba(255,255,255,0.025);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+    }
+
+    /* Modal */
+    .modal-mask {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.66);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 24px;
+    }
+    .modal-mask.open { display: flex; }
+    .modal {
+      width: 100%;
+      max-width: 460px;
+      background: linear-gradient(160deg, #14171f, #0a0c11);
+      border: 1px solid var(--line-2);
+      border-radius: var(--radius);
+      box-shadow: 0 30px 80px rgba(0,0,0,0.55);
+      padding: 28px;
+    }
+    .modal h3 {
+      font-family: var(--display);
+      font-size: 22px;
+      margin: 0 0 6px;
+    }
+    .modal .modal-sub {
+      color: var(--text-3);
+      font-size: 12.5px;
+      margin-bottom: 20px;
+    }
+    .modal .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 8px;
+    }
+    .modal .modal-actions .btn { min-width: 88px; }
+
+    /* Toast */
+    .toast {
+      position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%);
+      padding: 12px 20px;
+      background: rgba(20, 24, 32, 0.94);
+      border: 1px solid var(--line-2);
+      border-radius: 999px;
+      color: var(--text);
+      font-size: 13px;
+      box-shadow: 0 18px 60px rgba(0,0,0,0.45);
+      z-index: 200;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
+    .toast.ok { border-color: rgba(43, 216, 112, 0.5); }
+    .toast.err { border-color: rgba(255, 87, 87, 0.5); }
+
+    /* Username pill in topbar (matches screenshot) */
+    .user-pill {
+      padding: 8px 22px;
+      border-radius: 999px;
+      background: var(--bg-3);
+      border: 1px solid var(--line-2);
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    @media (max-width: 980px) {
+      .sec-grid { grid-template-columns: 1fr; }
+      .sec-card { flex-wrap: wrap; }
+      .sec-pill { width: 100%; padding: 12px; }
+      .ip-head, .ip-row { grid-template-columns: 1fr; gap: 4px; text-align: left; }
+      .ip-head { padding: 4px 18px 12px; }
+      .ip-head > div { text-align: left; }
+      .ip-row { text-align: left; padding: 14px 18px; }
+      .ip-row .ip-loc::before { content: "地点 · "; color: var(--text-3); }
+      .ip-row .ip-ts::before { content: "时间 · "; color: var(--text-3); }
+      .section-title { font-size: 24px; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="/"><div class="brand-mark">VEGA</div><span class="brand-name">银河量化</span></a>
+  <nav class="topnav">
+    <a href="/">首页</a>
+    <a href="/referral">推广返佣</a>
+    <a href="/mall">商城</a>
+    <a href="/wallet">钱包</a>
+    <a class="active" href="/profile">个人中心</a>
+    <a href="/tutorial">使用教程</a>
+    <a class="cta" href="/kzt">控制台</a>
+  </nav>
+  <div class="top-actions">
+    <a id="userPill" class="user-pill" href="/login">Login</a>
+  </div>
+</header>
+
+<main class="page">
+
+  <h2 class="section-title">安全中心</h2>
+  <section class="sec-grid">
+    <div class="sec-card">
+      <div class="sec-icon">B</div>
+      <div class="sec-body">
+        <div class="sec-title">修改密码</div>
+        <p class="sec-sub">建议定期更换为复杂度较高的密码,以更好地保护您的账户安全。</p>
+      </div>
+      <button class="sec-pill" data-modal="pwd">立即修改</button>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-icon">B</div>
+      <div class="sec-body">
+        <div class="sec-title">修改绑定手机号</div>
+        <p class="sec-sub">绑定常用手机号,便于在登录与异常活动时第一时间收到通知。</p>
+        <div class="sec-meta" id="boundPhone">未绑定</div>
+      </div>
+      <button class="sec-pill" data-modal="phone">立即修改</button>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-icon">B</div>
+      <div class="sec-body">
+        <div class="sec-title">修改绑定邮箱</div>
+        <p class="sec-sub">使用日常邮箱接收订阅、结算与重要账户提醒,避免错过关键信息。</p>
+        <div class="sec-meta" id="boundEmail">未绑定</div>
+      </div>
+      <button class="sec-pill" data-modal="email">立即修改</button>
+    </div>
+
+    <div class="sec-card" id="verifyCard">
+      <div class="sec-icon">✓</div>
+      <div class="sec-body">
+        <div class="sec-title">邮箱验证 <span id="verifyStatus" class="sec-meta" style="display:inline-block;margin-left:6px;font-size:12px;"></span></div>
+        <p class="sec-sub">完成邮箱验证后才能开通付费套餐与提现。验证码在开发环境写入 <code>runtime/portal/pending_codes.json</code> 的 <code>verify:&lt;email&gt;</code> 项。</p>
+      </div>
+      <button class="sec-pill" data-modal="verify" id="verifyBtn">立即验证</button>
+    </div>
+
+    <div class="sec-card" style="border-color: rgba(255,87,87,.25);">
+      <div class="sec-icon" style="background: rgba(255,87,87,.16); color: var(--danger);">!</div>
+      <div class="sec-body">
+        <div class="sec-title" style="color: var(--danger);">注销账号</div>
+        <p class="sec-sub">将账号软归档:邮箱被替换为占位地址、密码与会话清除、所有套餐隐藏。账号无法恢复,请谨慎操作。</p>
+      </div>
+      <button class="sec-pill" data-modal="delete" style="background: rgba(255,87,87,.12); border-color: rgba(255,87,87,.4); color: var(--danger);">注销</button>
+    </div>
+  </section>
+
+  <h2 class="section-title">最近十次登录IP</h2>
+  <section>
+    <div class="ip-head">
+      <div>IP</div>
+      <div>地点</div>
+      <div>登录时间</div>
+    </div>
+    <div class="ip-list" id="ipList">
+      <div class="ip-empty">暂无登录记录</div>
+    </div>
+  </section>
+</main>
+
+<!-- Modals -->
+<div class="modal-mask" id="modalPwd">
+  <div class="modal">
+    <h3>修改密码</h3>
+    <p class="modal-sub">完成修改后,所有已登录设备将需要使用新密码重新登录。</p>
+    <form id="formPwd">
+      <div class="form-row"><label>旧密码</label><input type="password" name="oldPassword" required autocomplete="current-password" /></div>
+      <div class="form-row"><label>新密码</label><input type="password" name="newPassword" required minlength="6" autocomplete="new-password" /></div>
+      <div class="form-row"><label>确认新密码</label><input type="password" name="confirmPassword" required minlength="6" autocomplete="new-password" /></div>
+      <div class="modal-actions">
+        <button type="button" class="btn" data-close>取消</button>
+        <button type="submit" class="btn btn-primary">提交</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-mask" id="modalPhone">
+  <div class="modal">
+    <h3>修改绑定手机号</h3>
+    <p class="modal-sub">输入新的手机号并获取验证码后即可完成绑定。</p>
+    <form id="formPhone">
+      <div class="form-row"><label>新手机号</label><input type="tel" name="phone" required pattern="[0-9+\- ]{6,20}" placeholder="例如 13800138000" /></div>
+      <div class="form-row" style="display:flex; gap:8px; align-items:flex-end;">
+        <div style="flex:1;">
+          <label style="display:block; margin-bottom:6px; font-size:12px; color:var(--text-2);">验证码</label>
+          <input type="text" name="code" required maxlength="6" placeholder="6 位验证码" />
+        </div>
+        <button type="button" class="btn" id="phoneSendCode" style="margin-bottom:0;">发送验证码</button>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" data-close>取消</button>
+        <button type="submit" class="btn btn-primary">提交</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-mask" id="modalEmail">
+  <div class="modal">
+    <h3>修改绑定邮箱</h3>
+    <p class="modal-sub">新邮箱将用于登录、结算回执与账户安全通知。</p>
+    <form id="formEmail">
+      <div class="form-row"><label>新邮箱</label><input type="email" name="email" required placeholder="name@example.com" /></div>
+      <div class="form-row" style="display:flex; gap:8px; align-items:flex-end;">
+        <div style="flex:1;">
+          <label style="display:block; margin-bottom:6px; font-size:12px; color:var(--text-2);">验证码</label>
+          <input type="text" name="code" required maxlength="6" placeholder="6 位验证码" />
+        </div>
+        <button type="button" class="btn" id="emailSendCode" style="margin-bottom:0;">发送验证码</button>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" data-close>取消</button>
+        <button type="submit" class="btn btn-primary">提交</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-mask" id="modalVerify">
+  <div class="modal">
+    <h3>验证邮箱</h3>
+    <p class="modal-sub">点击「发送验证码」后,系统会把 6 位验证码写入服务器 <code>runtime/portal/pending_codes.json</code> 文件 (键为 <code>verify:&lt;email&gt;</code>),有效期 24 小时。</p>
+    <form id="formVerify">
+      <div class="form-row" style="display:flex; gap:8px; align-items:flex-end;">
+        <div style="flex:1;">
+          <label style="display:block; margin-bottom:6px; font-size:12px; color:var(--text-2);">验证码</label>
+          <input type="text" name="code" required maxlength="6" placeholder="6 位验证码" />
+        </div>
+        <button type="button" class="btn" id="verifySendCode" style="margin-bottom:0;">发送验证码</button>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" data-close>取消</button>
+        <button type="submit" class="btn btn-primary">完成验证</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-mask" id="modalDelete">
+  <div class="modal">
+    <h3 style="color: var(--danger);">注销账号</h3>
+    <p class="modal-sub">注销后将自动退出登录,无法找回:邮箱被替换为占位地址、密码与全部会话清除、所有套餐隐藏、邀请关系保留作为审计。<br/>请输入登录密码并键入 <code>DELETE</code> 确认。</p>
+    <form id="formDelete">
+      <div class="form-row"><label>当前登录密码</label><input type="password" name="password" required placeholder="登录密码" /></div>
+      <div class="form-row"><label>键入 DELETE 以确认</label><input type="text" name="confirm" required placeholder="DELETE" autocomplete="off" /></div>
+      <div class="modal-actions">
+        <button type="button" class="btn" data-close>取消</button>
+        <button type="submit" class="btn" style="background: rgba(255,87,87,.16); border-color: rgba(255,87,87,.45); color: var(--danger);">确认注销</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-col"><h4>GalaxyQuantitative</h4><p>银河量化 · 为您的交易赋能</p></div>
+    <div class="footer-col"><h4>联系我们</h4><a href="https://t.me/" target="_blank">Telegram</a><a href="#">腾讯QQ</a></div>
+    <div class="footer-col"><h4>友情链接</h4><a href="https://www.okx.com/" target="_blank">欧易交易所</a><a href="https://www.binance.com/" target="_blank">币安交易所</a></div>
+  </div>
+  <div class="footer-bottom">© 2026 GalaxyQuantitative Team. All rights reserved.</div>
+</footer>
+
+<script>
+  /* ---- API helper (envelope-aware: {data, code, message}) ---- */
+  async function api(path, opts = {}) {
+    const init = Object.assign({ credentials: "include", headers: {} }, opts);
+    if (init.body && !(init.body instanceof FormData) && typeof init.body !== "string") {
+      init.body = JSON.stringify(init.body);
+      init.headers["Content-Type"] = "application/json";
+    }
+    try {
+      const r = await fetch(path, init);
+      const j = await r.json().catch(() => null);
+      if (!j) return { ok: false, message: "网络异常" };
+      const ok = r.ok && (j.code === 0 || j.code === 200 || j.code === "0");
+      return { ok, data: j.data, code: j.code, message: j.message || "" };
+    } catch (e) {
+      return { ok: false, message: String(e) };
+    }
+  }
+
+  /* ---- Toast ---- */
+  const toastEl = document.getElementById("toast");
+  let toastTimer = null;
+  function toast(msg, kind = "ok") {
+    toastEl.textContent = msg;
+    toastEl.className = "toast show " + kind;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.className = "toast " + kind, 2400);
+  }
+
+  /* ---- Modal helpers ---- */
+  function openModal(id) { document.getElementById(id).classList.add("open"); }
+  function closeModal(el) { el.classList.remove("open"); }
+  const _MODAL_BY_KEY = {
+    pwd: "modalPwd",
+    phone: "modalPhone",
+    email: "modalEmail",
+    verify: "modalVerify",
+    delete: "modalDelete",
+  };
+  document.querySelectorAll("[data-modal]").forEach(b => b.addEventListener("click", () => {
+    const k = b.getAttribute("data-modal");
+    openModal(_MODAL_BY_KEY[k] || "modalEmail");
+  }));
+  document.querySelectorAll(".modal-mask").forEach(m => {
+    m.addEventListener("click", e => { if (e.target === m) closeModal(m); });
+    m.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", () => closeModal(m)));
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") document.querySelectorAll(".modal-mask.open").forEach(closeModal);
+  });
+
+  /* ---- Format a ms-timestamp like the screenshot (locale en-US) ---- */
+  function fmtTs(ms) {
+    if (!ms) return "—";
+    const d = new Date(ms);
+    if (isNaN(d.getTime())) return "—";
+    return d.toLocaleString("en-US", {
+      month: "numeric", day: "numeric", year: "numeric",
+      hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true
+    });
+  }
+
+  /* ---- Load user info + login history ---- */
+  (async () => {
+    const info = await api("/api/portal/account/userInfo");
+    if (info.ok && info.data) {
+      const u = info.data;
+      document.getElementById("boundEmail").textContent = u.email || "未绑定";
+      document.getElementById("boundPhone").textContent = u.phoneNumber || u.phone || "未绑定";
+      const pill = document.getElementById("userPill");
+      if (u.userName || u.username || u.email) {
+        pill.textContent = u.userName || u.username || u.email;
+        pill.removeAttribute("href");
+        pill.style.cursor = "default";
+      }
+    }
+
+    const hist = await api("/api/portal/wallet/login-history");
+    const list = document.getElementById("ipList");
+    if (hist.ok && Array.isArray(hist.data) && hist.data.length) {
+      list.innerHTML = hist.data.slice(0, 10).map(r => `
+        <div class="ip-row">
+          <div class="ip-cell">${(r.ip || "—").replace(/</g, "&lt;")}</div>
+          <div class="ip-loc">${(r.location || "—").replace(/</g, "&lt;")}</div>
+          <div class="ip-ts">${fmtTs(r.timestamp)}</div>
+        </div>`).join("");
+    }
+  })();
+
+  /* ---- Change password ---- */
+  document.getElementById("formPwd").addEventListener("submit", async e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = {
+      oldPassword: fd.get("oldPassword"),
+      newPassword: fd.get("newPassword"),
+      confirmPassword: fd.get("confirmPassword"),
+    };
+    if (body.newPassword !== body.confirmPassword) { toast("两次新密码不一致", "err"); return; }
+    if ((body.newPassword || "").length < 6) { toast("新密码至少 6 位", "err"); return; }
+    const r = await api("/api/portal/security/change-password", { method: "POST", body });
+    if (r.ok) {
+      toast("密码已更新,请使用新密码重新登录", "ok");
+      e.target.reset();
+      closeModal(document.getElementById("modalPwd"));
+    } else {
+      toast(r.message || "修改失败", "err");
+    }
+  });
+
+  /* ---- Re-fetch user info & sync the visible labels ---- */
+  async function refreshUserInfo() {
+    const info = await api("/api/portal/account/userInfo");
+    if (info.ok && info.data) {
+      const u = info.data;
+      document.getElementById("boundEmail").textContent = u.email || "未绑定";
+      document.getElementById("boundPhone").textContent = u.phoneNumber || u.phone || "未绑定";
+      const pill = document.getElementById("userPill");
+      if (u.userName || u.username || u.email) {
+        pill.textContent = u.userName || u.username || u.email;
+        pill.removeAttribute("href");
+        pill.style.cursor = "default";
+      }
+    }
+  }
+
+  /* ---- 60s countdown helper for "send code" buttons ---- */
+  function startCountdown(btn, originalLabel) {
+    let left = 60;
+    btn.disabled = true;
+    btn.textContent = left + " 秒后重发";
+    const timer = setInterval(() => {
+      left -= 1;
+      if (left <= 0) {
+        clearInterval(timer);
+        btn.disabled = false;
+        btn.textContent = originalLabel;
+      } else {
+        btn.textContent = left + " 秒后重发";
+      }
+    }, 1000);
+  }
+
+  /* ---- Generic send-code wiring ---- */
+  function wireSendCode(btnId, channel, getTarget, validate) {
+    const btn = document.getElementById(btnId);
+    const originalLabel = btn.textContent;
+    btn.addEventListener("click", async () => {
+      const target = (getTarget() || "").trim();
+      const v = validate(target);
+      if (v) { toast(v, "err"); return; }
+      btn.disabled = true;
+      const r = await api("/api/portal/security/send-code", {
+        method: "POST",
+        body: { channel, target },
+      });
+      if (r.ok) {
+        toast("验证码已发送(开发环境请查看 runtime/portal/pending_codes.json)", "ok");
+        startCountdown(btn, originalLabel);
+      } else {
+        btn.disabled = false;
+        toast(r.message || "发送失败", "err");
+      }
+    });
+  }
+
+  /* ---- Phone bind (real backend) ---- */
+  wireSendCode(
+    "phoneSendCode",
+    "phone",
+    () => document.querySelector('#formPhone input[name="phone"]').value,
+    v => (!/^[0-9+\- ]{6,20}$/.test(v) ? "手机号格式不正确" : "")
+  );
+  document.getElementById("formPhone").addEventListener("submit", async e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const phone = (fd.get("phone") || "").trim();
+    const code = (fd.get("code") || "").trim();
+    if (!/^[0-9+\- ]{6,20}$/.test(phone)) { toast("手机号格式不正确", "err"); return; }
+    if (code.length !== 6) { toast("请输入 6 位验证码", "err"); return; }
+    const r = await api("/api/portal/security/change-phone", {
+      method: "POST",
+      body: { phone, code },
+    });
+    if (r.ok) {
+      toast("修改成功", "ok");
+      e.target.reset();
+      closeModal(document.getElementById("modalPhone"));
+      refreshUserInfo();
+    } else {
+      toast(r.message || "修改失败", "err");
+    }
+  });
+
+  /* ---- Email bind (real backend) ---- */
+  wireSendCode(
+    "emailSendCode",
+    "email",
+    () => document.querySelector('#formEmail input[name="email"]').value,
+    v => (!/^\S+@\S+\.\S+$/.test(v) ? "邮箱格式不正确" : "")
+  );
+  document.getElementById("formEmail").addEventListener("submit", async e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const email = (fd.get("email") || "").trim();
+    const code = (fd.get("code") || "").trim();
+    if (!/^\S+@\S+\.\S+$/.test(email)) { toast("邮箱格式不正确", "err"); return; }
+    if (code.length !== 6) { toast("请输入 6 位验证码", "err"); return; }
+    const r = await api("/api/portal/security/change-email", {
+      method: "POST",
+      body: { email, code },
+    });
+    if (r.ok) {
+      toast("修改成功", "ok");
+      e.target.reset();
+      closeModal(document.getElementById("modalEmail"));
+      refreshUserInfo();
+    } else {
+      toast(r.message || "修改失败", "err");
+    }
+  });
+
+  /* ---- Email verify (Feature #1) ---- */
+  document.getElementById("verifySendCode").addEventListener("click", async (e) => {
+    const btn = e.target;
+    btn.disabled = true;
+    const orig = btn.textContent;
+    btn.textContent = "发送中...";
+    try {
+      const r = await api("/api/portal/account/resend-verify", { method: "POST", body: {} });
+      if (r.ok) {
+        if (r.data && r.data.alreadyVerified) {
+          toast("邮箱已经验证过了", "ok");
+        } else {
+          toast("验证码已发送 · 请到 runtime/portal/pending_codes.json 查看", "ok");
+        }
+        let left = 60;
+        btn.textContent = `${left} 秒后可重发`;
+        const t = setInterval(() => {
+          left--;
+          if (left <= 0) { clearInterval(t); btn.disabled = false; btn.textContent = orig; }
+          else btn.textContent = `${left} 秒后可重发`;
+        }, 1000);
+      } else {
+        toast(r.message || "发送失败", "err");
+        btn.disabled = false; btn.textContent = orig;
+      }
+    } catch (_) {
+      toast("网络异常", "err");
+      btn.disabled = false; btn.textContent = orig;
+    }
+  });
+  document.getElementById("formVerify").addEventListener("submit", async e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const code = (fd.get("code") || "").trim();
+    if (code.length !== 6) { toast("请输入 6 位验证码", "err"); return; }
+    const r = await api("/api/portal/account/verify-email", {
+      method: "POST",
+      body: { code },
+    });
+    if (r.ok) {
+      toast("邮箱验证完成", "ok");
+      e.target.reset();
+      closeModal(document.getElementById("modalVerify"));
+      refreshUserInfo();
+    } else {
+      toast(r.message || "验证失败", "err");
+    }
+  });
+
+  /* ---- Account delete (Feature #3) ---- */
+  document.getElementById("formDelete").addEventListener("submit", async e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const password = fd.get("password") || "";
+    const confirm = (fd.get("confirm") || "").trim();
+    if (confirm !== "DELETE") { toast("请键入大写 DELETE 以确认", "err"); return; }
+    if (!password) { toast("请输入登录密码", "err"); return; }
+    const r = await api("/api/portal/account/delete", {
+      method: "POST",
+      body: { password, confirm },
+    });
+    if (r.ok) {
+      toast("账号已注销,即将退出...", "ok");
+      try { localStorage.removeItem("appToken"); localStorage.removeItem("appUser"); } catch (_) {}
+      setTimeout(() => { location.href = "/"; }, 1200);
+    } else {
+      toast(r.message || "注销失败", "err");
+    }
+  });
+
+  /* Refresh emailVerified badge whenever loadProfile runs. */
+  function syncVerifyBadge(u) {
+    const status = document.getElementById("verifyStatus");
+    const btn = document.getElementById("verifyBtn");
+    if (!status || !btn) return;
+    if (u && u.emailVerified) {
+      status.innerHTML = '<span style="color:var(--accent)">已验证</span>';
+      btn.textContent = "已验证";
+      btn.disabled = true;
+      btn.style.opacity = "0.55";
+      btn.style.cursor = "default";
+    } else {
+      status.innerHTML = '<span style="color:var(--warn)">未验证</span>';
+      btn.textContent = "立即验证";
+      btn.disabled = false;
+      btn.style.opacity = "";
+      btn.style.cursor = "";
+    }
+  }
+  // Hook into the existing refreshUserInfo loop.
+  const _origRefresh = window.refreshUserInfo;
+  window.refreshUserInfo = async function() {
+    const r = (typeof _origRefresh === "function") ? await _origRefresh() : null;
+    try {
+      const info = await api("/api/portal/account/userInfo");
+      if (info && info.ok && info.data) syncVerifyBadge(info.data);
+    } catch (_) {}
+    return r;
+  };
+  // Initial sync once page bootstraps.
+  setTimeout(() => { try { window.refreshUserInfo && window.refreshUserInfo(); } catch (_) {} }, 200);
+</script>
+
+</body>
+</html>

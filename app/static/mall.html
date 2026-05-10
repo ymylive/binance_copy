@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>商城 · 银河量化</title>
+  <link rel="stylesheet" href="/static/portal.css?v=20260501-01" />
+  <link rel="icon" href="/favicon.ico" />
+  <style>
+    /* ---------- Mall layout ---------- */
+    .mall-page {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 36px 32px 80px;
+    }
+    .hero-row {
+      display: grid;
+      grid-template-columns: 1.95fr 1fr;
+      gap: 18px;
+      margin-bottom: 36px;
+    }
+
+    /* Trial card (left) */
+    .trial-card {
+      position: relative;
+      padding: 36px 38px;
+      border-radius: var(--radius-lg);
+      background:
+        radial-gradient(ellipse 70% 80% at 90% 40%, rgba(43,216,112,.18), transparent 70%),
+        linear-gradient(135deg, #173024 0%, #0d1812 60%, #08110c 100%);
+      border: 1px solid rgba(43,216,112,.18);
+      overflow: hidden;
+      min-height: 280px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .trial-card .badge-line {
+      font-size: 12px;
+      color: var(--accent);
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+    .trial-card h2 {
+      font-family: var(--display);
+      font-size: 28px;
+      margin: 0 0 10px;
+      color: var(--text);
+      line-height: 1.3;
+    }
+    .trial-card .trial-headline {
+      font-family: var(--display);
+      font-size: 56px;
+      letter-spacing: 0.01em;
+      margin: 8px 0 16px;
+      color: var(--text);
+      line-height: 1.05;
+    }
+    .trial-card .trial-headline em {
+      font-style: normal;
+      color: var(--accent);
+      text-shadow: 0 0 24px rgba(43,216,112,.45);
+    }
+    .trial-card p {
+      color: var(--text-2);
+      font-size: 13.5px;
+      line-height: 1.8;
+      max-width: 380px;
+      margin: 0 0 22px;
+    }
+    .trial-card .claim-btn {
+      align-self: flex-start;
+      padding: 12px 28px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #04130a;
+      font-weight: 600;
+      font-size: 14px;
+      border: none;
+      cursor: pointer;
+      transition: all .18s;
+    }
+    .trial-card .claim-btn:hover { background: #38e87a; box-shadow: 0 8px 24px rgba(43,216,112,.3); }
+
+    /* 3D coin cluster decoration */
+    .coin-stack {
+      position: absolute;
+      right: 36px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 180px;
+      height: 180px;
+      pointer-events: none;
+    }
+    .coin {
+      position: absolute;
+      width: 92px; height: 92px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 36px;
+      box-shadow:
+        inset -8px -12px 18px rgba(0,0,0,.4),
+        inset 6px 6px 12px rgba(255,255,255,.18),
+        0 12px 28px rgba(0,0,0,.5);
+      border: 2px solid rgba(255,255,255,.1);
+    }
+    .coin.btc {
+      background: radial-gradient(circle at 30% 30%, #ffc266, #d97a1f 60%, #8a4a0d);
+      color: #fff;
+      right: 20px; top: 60px;
+      transform: rotate(-12deg);
+      z-index: 3;
+    }
+    .coin.eth {
+      background: radial-gradient(circle at 30% 30%, #aabffa, #4f6bd1 60%, #2d3f8a);
+      color: #fff;
+      right: 70px; top: 0px;
+      transform: rotate(8deg);
+      width: 80px; height: 80px;
+      font-size: 30px;
+      z-index: 2;
+    }
+    .coin.usdt {
+      background: radial-gradient(circle at 30% 30%, #6cf2a4, #1aa856 60%, #0d6638);
+      color: #04130a;
+      right: 110px; top: 90px;
+      transform: rotate(20deg);
+      width: 70px; height: 70px;
+      font-size: 22px;
+      z-index: 1;
+    }
+    .coin-spark {
+      position: absolute;
+      width: 10px; height: 10px;
+      background: radial-gradient(circle, #fff, transparent 60%);
+      border-radius: 50%;
+      opacity: .8;
+    }
+
+    /* Subscription card (right) */
+    .sub-card {
+      padding: 28px 28px 26px;
+      border-radius: var(--radius-lg);
+      background: linear-gradient(160deg, var(--bg-2), var(--bg-1));
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-card);
+      display: flex;
+      flex-direction: column;
+    }
+    .sub-card h3 {
+      font-family: var(--display);
+      font-size: 20px;
+      margin: 0 0 18px;
+      color: var(--text);
+    }
+    .sub-row { margin-bottom: 14px; }
+    .sub-row label {
+      display: block;
+      font-size: 12px;
+      color: var(--text-3);
+      margin-bottom: 6px;
+      letter-spacing: .04em;
+    }
+    .sub-row select {
+      width: 100%;
+      background: var(--bg-3);
+      border: 1px solid var(--line-2);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 13.5px;
+      outline: none;
+    }
+    .sub-row select:focus { border-color: var(--accent); }
+    .price-display {
+      font-family: var(--display);
+      font-size: 38px;
+      color: var(--accent);
+      letter-spacing: 0.01em;
+      margin: 4px 0 14px;
+      text-shadow: 0 0 18px rgba(43,216,112,.25);
+    }
+    .info-line {
+      font-size: 12.5px;
+      color: var(--text-2);
+      line-height: 1.7;
+      margin: 3px 0;
+      display: flex;
+      gap: 6px;
+    }
+    .info-line .dot { color: var(--accent); }
+    .qty-stepper {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 14px 0 16px;
+    }
+    .qty-stepper label { font-size: 12px; color: var(--text-3); }
+    .qty-controls {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-3);
+      border: 1px solid var(--line-2);
+      border-radius: 8px;
+      padding: 2px;
+    }
+    .qty-controls button {
+      width: 26px; height: 26px;
+      border: none;
+      background: transparent;
+      color: var(--text);
+      font-size: 16px;
+      cursor: pointer;
+      border-radius: 6px;
+    }
+    .qty-controls button:hover { background: rgba(255,255,255,.06); }
+    .qty-controls span {
+      min-width: 24px;
+      text-align: center;
+      font-size: 13px;
+      font-family: var(--mono);
+    }
+    .sub-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: auto;
+    }
+    .sub-actions .btn { flex: 1; padding: 12px 14px; font-size: 13.5px; }
+    .sub-actions .btn-primary { background: var(--accent); }
+
+    /* Section heading */
+    .section-h {
+      font-family: var(--display);
+      font-size: 26px;
+      margin: 12px 0 18px;
+      letter-spacing: 0.02em;
+      color: var(--text);
+    }
+
+    /* Value-add cards grid */
+    .vas-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+    }
+    .vas-card {
+      position: relative;
+      padding: 26px 24px 24px;
+      border-radius: var(--radius);
+      background: linear-gradient(160deg, #1a1f28, #0d1117);
+      border: 1px solid var(--line);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .vas-card.v2 { background: linear-gradient(160deg, #1c2530, #0d1218); }
+    .vas-card.v3 { background: linear-gradient(160deg, #1f1c2e, #110d18); }
+    .vas-art {
+      height: 120px;
+      margin: -8px -8px 18px;
+      border-radius: 12px;
+      background:
+        radial-gradient(ellipse 60% 70% at 70% 50%, rgba(43,216,112,.18), transparent 70%),
+        linear-gradient(135deg, #11201a, #08110c);
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(43,216,112,.12);
+    }
+    .vas-art .mini-coin {
+      position: absolute;
+      width: 60px; height: 60px;
+      border-radius: 50%;
+      box-shadow: inset -6px -10px 14px rgba(0,0,0,.4), 0 8px 20px rgba(0,0,0,.4);
+      border: 2px solid rgba(255,255,255,.08);
+    }
+    .vas-art .mc-1 {
+      background: radial-gradient(circle at 30% 30%, #ffc266, #d97a1f 60%, #8a4a0d);
+      right: 30px; top: 22px;
+      transform: rotate(-10deg);
+    }
+    .vas-art .mc-2 {
+      background: radial-gradient(circle at 30% 30%, #aabffa, #4f6bd1 60%, #2d3f8a);
+      width: 44px; height: 44px;
+      right: 78px; top: 50px;
+      transform: rotate(15deg);
+    }
+    .vas-art .mc-3 {
+      background: radial-gradient(circle at 30% 30%, #6cf2a4, #1aa856 60%, #0d6638);
+      width: 36px; height: 36px;
+      right: 110px; top: 30px;
+      transform: rotate(-25deg);
+    }
+    .vas-art::after {
+      content: "";
+      position: absolute;
+      left: 12%;
+      top: 30%;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.6);
+      box-shadow:
+        20px 30px 0 rgba(255,255,255,.4),
+        50px -10px 0 0.5px rgba(255,255,255,.5),
+        80px 50px 0 rgba(255,255,255,.3);
+    }
+    .vas-card .vas-name {
+      font-size: 12px;
+      color: var(--text-3);
+      letter-spacing: .04em;
+      margin-bottom: 4px;
+    }
+    .vas-card h4 {
+      font-family: var(--display);
+      font-size: 17px;
+      margin: 0 0 8px;
+      color: var(--text);
+      line-height: 1.35;
+    }
+    .vas-price {
+      font-family: var(--display);
+      font-size: 22px;
+      color: var(--accent);
+      margin: 6px 0 12px;
+    }
+    .vas-meta {
+      font-size: 12px;
+      color: var(--text-2);
+      line-height: 1.7;
+      margin: 2px 0;
+    }
+    .vas-meta .k { color: var(--text-3); margin-right: 6px; }
+    .vas-bullets {
+      list-style: none;
+      padding: 0;
+      margin: 12px 0 18px;
+      font-size: 12.5px;
+      color: var(--text-2);
+      line-height: 1.7;
+    }
+    .vas-bullets li { padding-left: 14px; position: relative; }
+    .vas-bullets li::before {
+      content: "";
+      position: absolute;
+      left: 0; top: 9px;
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    .vas-card .btn-primary {
+      width: 100%;
+      padding: 11px;
+      margin-top: auto;
+      font-size: 13.5px;
+    }
+
+    /* Modal */
+    .modal-bg {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.6);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    .modal-bg.show { display: flex; }
+    .modal {
+      width: 90%;
+      max-width: 460px;
+      background: var(--bg-2);
+      border: 1px solid var(--line-2);
+      border-radius: var(--radius-lg);
+      padding: 30px;
+      box-shadow: 0 30px 80px rgba(0,0,0,.6);
+    }
+    .modal h3 {
+      font-family: var(--display);
+      font-size: 22px;
+      margin: 0 0 14px;
+    }
+    .modal p { color: var(--text-2); font-size: 14px; line-height: 1.7; margin: 0 0 18px; }
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 22px;
+    }
+    .coupon-list {
+      max-height: 320px;
+      overflow-y: auto;
+      margin: 0 -6px;
+    }
+    .coupon-item {
+      padding: 12px 14px;
+      margin: 6px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg-3);
+      cursor: pointer;
+      transition: border-color .18s;
+    }
+    .coupon-item:hover { border-color: var(--accent); }
+    .coupon-item .disc {
+      font-family: var(--display);
+      color: var(--accent);
+      font-size: 18px;
+    }
+    .coupon-item .name { font-size: 13px; color: var(--text); }
+    .coupon-item .info { font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      padding: 12px 24px;
+      background: var(--bg-3);
+      border: 1px solid var(--line-2);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 13.5px;
+      opacity: 0;
+      pointer-events: none;
+      transition: all .25s;
+      z-index: 200;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast.ok { border-color: var(--accent); }
+    .toast.err { border-color: var(--danger); }
+
+    @media (max-width: 980px) {
+      .hero-row { grid-template-columns: 1fr; }
+      .vas-grid { grid-template-columns: 1fr; }
+      .trial-card .trial-headline { font-size: 40px; }
+      .coin-stack { width: 130px; height: 130px; right: 12px; }
+      .coin.btc { width: 70px; height: 70px; font-size: 28px; }
+      .coin.eth { width: 60px; height: 60px; font-size: 22px; }
+      .coin.usdt { width: 50px; height: 50px; font-size: 18px; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="/"><div class="brand-mark">VEGA</div><span class="brand-name">银河量化</span></a>
+  <nav class="topnav">
+    <a href="/">首页</a>
+    <a href="/referral">推广返佣</a>
+    <a class="active" href="/mall">商城</a>
+    <a href="/wallet">钱包</a>
+    <a href="/profile">个人中心</a>
+    <a href="/tutorial">使用教程</a>
+    <a class="cta" href="/kzt">控制台</a>
+  </nav>
+  <div class="top-actions">
+    <a class="login-btn" href="/login">Login</a>
+  </div>
+</header>
+
+<main class="mall-page">
+  <!-- Hero row: trial card + subscription card -->
+  <section class="hero-row">
+    <!-- Trial card -->
+    <div class="trial-card">
+      <div>
+        <div class="badge-line">活动期间限时福利</div>
+        <h2>活动期间可领取</h2>
+        <div class="trial-headline"><em>7天</em>免费试用!</div>
+        <p>注册即领，零门槛激活完整功能。涵盖跨所秒级跟随、信号即时推送与精细仓位控制，先用再决定是否订阅。</p>
+      </div>
+      <button class="claim-btn" id="claim-trial-btn">立即领取</button>
+      <div class="coin-stack" aria-hidden="true">
+        <div class="coin eth">Ξ</div>
+        <div class="coin btc">B</div>
+        <div class="coin usdt">$</div>
+        <div class="coin-spark" style="right: 12px; top: 20px;"></div>
+        <div class="coin-spark" style="right: 160px; top: 80px;"></div>
+        <div class="coin-spark" style="right: 60px; top: 170px;"></div>
+      </div>
+    </div>
+
+    <!-- Subscription card -->
+    <div class="sub-card">
+      <h3>主套餐订阅</h3>
+      <div class="sub-row">
+        <label>商品名称</label>
+        <select id="plan-select">
+          <option value="monthly" data-amount="80" data-period="30 天">跟单名额 · 月度</option>
+          <option value="quarterly" data-amount="220" data-period="90 天">跟单名额 · 季度</option>
+          <option value="yearly" data-amount="800" data-period="365 天">跟单名额 · 年度</option>
+        </select>
+      </div>
+      <div class="sub-row">
+        <label>下单名额</label>
+        <div class="price-display" id="plan-price">$80.00</div>
+      </div>
+      <div class="info-line"><span class="dot">·</span><span id="info-period">订阅周期：30 天 · 自动续费可关闭</span></div>
+      <div class="info-line"><span class="dot">·</span><span>可绑定 1 个交易账户，支持随时切换</span></div>
+      <div class="info-line"><span class="dot">·</span><span>到期前 24 小时内未跟单可申请按比例退款</span></div>
+      <div class="qty-stepper">
+        <label>数量</label>
+        <div class="qty-controls">
+          <button type="button" id="qty-minus">−</button>
+          <span id="qty-val">1</span>
+          <button type="button" id="qty-plus">+</button>
+        </div>
+      </div>
+      <div class="sub-actions">
+        <button class="btn btn-primary" id="buy-btn">立即购买</button>
+        <button class="btn btn-ghost" id="coupon-btn">优惠券抵扣</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Value-add services -->
+  <h2 class="section-h">增值服务</h2>
+  <section class="vas-grid">
+    <div class="vas-card">
+      <div class="vas-art" aria-hidden="true">
+        <div class="mini-coin mc-1"></div>
+        <div class="mini-coin mc-2"></div>
+        <div class="mini-coin mc-3"></div>
+      </div>
+      <div class="vas-name">商品名称</div>
+      <h4>标准跟单 · 30 天 / 单账户</h4>
+      <div class="vas-price">$80</div>
+      <div class="vas-meta"><span class="k">订阅期</span>30 天</div>
+      <div class="vas-meta"><span class="k">账户</span>1 个</div>
+      <ul class="vas-bullets">
+        <li>覆盖币安与欧易，秒级跟随核心交易员仓位</li>
+        <li>支持固定比例与领先者保证金两种缩放模式</li>
+      </ul>
+      <button class="btn btn-primary" data-buy data-amount="80" data-plan="monthly">立即购买</button>
+    </div>
+
+    <div class="vas-card v2">
+      <div class="vas-art" aria-hidden="true">
+        <div class="mini-coin mc-1" style="right: 24px;"></div>
+        <div class="mini-coin mc-2" style="right: 80px; top: 40px;"></div>
+        <div class="mini-coin mc-3" style="right: 120px; top: 22px;"></div>
+      </div>
+      <div class="vas-name">商品名称</div>
+      <h4>多账户跟单 · 30 天 / 3 账户</h4>
+      <div class="vas-price">$199</div>
+      <div class="vas-meta"><span class="k">订阅期</span>30 天</div>
+      <div class="vas-meta"><span class="k">账户</span>3 个并行</div>
+      <ul class="vas-bullets">
+        <li>同一信号同步派发至多账户，仓位独立缩放</li>
+        <li>团队/家庭账户场景，统一控制台集中管理</li>
+      </ul>
+      <button class="btn btn-primary" data-buy data-amount="220" data-plan="quarterly">立即购买</button>
+    </div>
+
+    <div class="vas-card v3">
+      <div class="vas-art" aria-hidden="true">
+        <div class="mini-coin mc-1" style="right: 18px; top: 26px;"></div>
+        <div class="mini-coin mc-2" style="right: 70px; top: 14px;"></div>
+        <div class="mini-coin mc-3" style="right: 116px; top: 56px;"></div>
+      </div>
+      <div class="vas-name">商品名称</div>
+      <h4>节日盛典 · 7 天免费下单名额</h4>
+      <div class="vas-price">$0</div>
+      <div class="vas-meta"><span class="k">订阅期</span>7 天体验</div>
+      <div class="vas-meta"><span class="k">账户</span>1 个</div>
+      <ul class="vas-bullets">
+        <li>限时活动专享，注册后一键激活体验额度</li>
+        <li>到期可无缝升级正式订阅，历史配置自动迁移</li>
+      </ul>
+      <button class="btn btn-primary" data-buy data-amount="800" data-plan="yearly">立即购买</button>
+    </div>
+  </section>
+</main>
+
+<!-- Footer -->
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-col">
+      <h4>GalaxyQuantitative</h4>
+      <p>银河量化 · 为您的交易赋能<br/>为专业交易者提供机构级跟单基础设施。</p>
+    </div>
+    <div class="footer-col">
+      <h4>联系我们</h4>
+      <a href="https://t.me/" target="_blank" rel="noopener">Telegram</a>
+      <a href="#" onclick="return false">腾讯QQ</a>
+      <a href="mailto:support@galaxyquantitative.local">support@galaxyquantitative.local</a>
+    </div>
+    <div class="footer-col">
+      <h4>友情链接</h4>
+      <a href="https://www.okx.com/" target="_blank" rel="noopener">欧易交易所</a>
+      <a href="https://www.binance.com/" target="_blank" rel="noopener">币安交易所</a>
+      <a href="/tutorial">使用教程</a>
+    </div>
+  </div>
+  <div class="footer-bottom">© 2026 GalaxyQuantitative Team. All rights reserved.</div>
+</footer>
+
+<!-- Confirm purchase modal -->
+<div class="modal-bg" id="confirm-modal">
+  <div class="modal">
+    <h3>确认购买</h3>
+    <p id="confirm-text">您正在购买跟单名额 · 月度，需要 $80。</p>
+    <div class="sub-row" style="margin-bottom:12px;">
+      <label style="display:block; font-size:12px; color:var(--text-3); margin-bottom:6px;">账户备注（可选）</label>
+      <input type="text" id="confirm-alias" placeholder="例如：主账户" style="width:100%; background:var(--bg-3); border:1px solid var(--line-2); color:var(--text); padding:10px 12px; border-radius:8px; font-size:13.5px;" />
+    </div>
+    <div id="confirm-balance" style="font-size:12.5px; color:var(--text-2); line-height:1.7; padding:10px 12px; background:rgba(0,0,0,.32); border:1px solid var(--line); border-radius:10px;"></div>
+    <div id="confirm-error" style="display:none; margin-top:10px; font-size:12.5px; color:var(--danger); padding:8px 12px; background:rgba(255,87,87,.08); border:1px solid rgba(255,87,87,.35); border-radius:8px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close>取消</button>
+      <button class="btn btn-primary" id="confirm-buy">确认支付</button>
+    </div>
+  </div>
+</div>
+
+<!-- Coupon modal -->
+<div class="modal-bg" id="coupon-modal">
+  <div class="modal">
+    <h3>优惠券抵扣</h3>
+    <p>选择一张可用优惠券应用至当前订单。</p>
+    <div class="coupon-list" id="coupon-list">
+      <div style="text-align:center; padding: 28px 0; color: var(--text-3); font-size: 13px;">加载中…</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close>关闭</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  // ---------- helpers ----------
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function $$(sel, root) { return Array.from((root || document).querySelectorAll(sel)); }
+  function showToast(msg, kind) {
+    var t = $('#toast');
+    t.textContent = msg;
+    t.classList.remove('ok', 'err');
+    if (kind) t.classList.add(kind);
+    t.classList.add('show');
+    setTimeout(function () { t.classList.remove('show'); }, 2200);
+  }
+  function openModal(id) { var el = document.getElementById(id); if (el) el.classList.add('show'); }
+  function closeModal(id) { var el = document.getElementById(id); if (el) el.classList.remove('show'); }
+  $$('[data-close]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var bg = b.closest('.modal-bg'); if (bg) bg.classList.remove('show');
+    });
+  });
+  $$('.modal-bg').forEach(function (bg) {
+    bg.addEventListener('click', function (e) { if (e.target === bg) bg.classList.remove('show'); });
+  });
+
+  async function api(path, opts) {
+    try {
+      var headers = Object.assign({ 'Content-Type': 'application/json' }, (opts && opts.headers) || {});
+      var t = localStorage.getItem('appToken') || '';
+      if (t) headers['Authorization'] = 'Bearer ' + t;
+      var res = await fetch(path, Object.assign({ credentials: 'include' }, opts || {}, { headers: headers }));
+      if (res.status === 401) { return { code: 401, message: 'unauthorized', data: null }; }
+      var json = await res.json().catch(function () { return null; });
+      if (!json) return { code: res.status, message: 'http_' + res.status, data: null };
+      if (typeof json === 'object' && 'code' in json) return json;
+      return { code: 0, data: json, message: 'ok' };
+    } catch (e) {
+      return { code: -1, message: String(e && e.message || e), data: null };
+    }
+  }
+
+  // ---------- plan price fallback (matches runtime/portal/plans.json seed) ----------
+  var PLAN_PRICES = { monthly: 80, quarterly: 220, yearly: 800 };
+
+  // ---------- subscription card state ----------
+  var planSelect = $('#plan-select');
+  var priceDisp = $('#plan-price');
+  var infoPeriod = $('#info-period');
+  var qtyVal = $('#qty-val');
+  var qty = 1;
+
+  function renderPlan() {
+    var opt = planSelect.options[planSelect.selectedIndex];
+    var amount = Number(opt.dataset.amount || 0);
+    var period = opt.dataset.period || '';
+    priceDisp.textContent = '$' + amount.toFixed(2);
+    infoPeriod.textContent = '订阅周期：' + period + ' · 自动续费可关闭';
+  }
+  planSelect.addEventListener('change', renderPlan);
+  $('#qty-plus').addEventListener('click', function () { if (qty < 99) { qty++; qtyVal.textContent = qty; renderPlan(); } });
+  $('#qty-minus').addEventListener('click', function () { if (qty > 1) { qty--; qtyVal.textContent = qty; renderPlan(); } });
+  renderPlan();
+
+  // ---------- load rules (price tiers) ----------
+  api('/api/portal/biz/rules').then(function (r) {
+    // Backend currently returns rebate tiers; we keep hardcoded plans.
+    // If a future shape includes plan tiers, we could remap here.
+  });
+
+  // ---------- main 立即购买 button ----------
+  var pendingPurchase = null;
+
+  function priceFor(planId) {
+    return PLAN_PRICES[planId] != null ? PLAN_PRICES[planId] : 0;
+  }
+
+  async function openConfirm(planId, name) {
+    pendingPurchase = { plan: planId, name: name };
+    var price = priceFor(planId);
+    $('#confirm-text').textContent = '您正在购买「' + name + '」，套餐价 $' + price.toFixed(2) + '。';
+    $('#confirm-error').style.display = 'none';
+    $('#confirm-error').textContent = '';
+    $('#confirm-alias').value = '';
+    var balanceEl = $('#confirm-balance');
+    balanceEl.textContent = '正在读取账户余额...';
+    openModal('confirm-modal');
+    // Fetch latest balance lazily on every open
+    var info = await api('/api/portal/account/userInfo');
+    var bal = (info && info.data && Number(info.data.balance)) || 0;
+    balanceEl.innerHTML =
+      '余额: $' + bal.toFixed(2) +
+      '；套餐价: $' + price.toFixed(2) +
+      '；不足将无法购买。请先到<a href="/wallet" style="color:var(--accent);">钱包</a>充值。';
+  }
+
+  $('#buy-btn').addEventListener('click', function () {
+    var opt = planSelect.options[planSelect.selectedIndex];
+    var planId = opt.value;
+    var planName = opt.textContent.trim();
+    openConfirm(planId, planName);
+  });
+
+  // ---------- value-add card buttons ----------
+  $$('[data-buy]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var planId = btn.dataset.plan || '';
+      var name = btn.closest('.vas-card').querySelector('h4').textContent.trim();
+      openConfirm(planId, name);
+    });
+  });
+
+  // ---------- claim trial (still routes through monthly purchase as a placeholder) ----------
+  $('#claim-trial-btn').addEventListener('click', function () {
+    openConfirm('monthly', '跟单名额 · 月度');
+  });
+
+  // ---------- confirm purchase ----------
+  $('#confirm-buy').addEventListener('click', async function () {
+    if (!pendingPurchase) { closeModal('confirm-modal'); return; }
+    var btn = this;
+    var errEl = $('#confirm-error');
+    errEl.style.display = 'none';
+    errEl.textContent = '';
+    btn.disabled = true;
+    btn.textContent = '处理中…';
+    var alias = ($('#confirm-alias').value || '').trim();
+    var body = { planId: pendingPurchase.plan };
+    if (alias) body.alias = alias;
+    var r = await api('/api/portal/mall/purchase', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    });
+    btn.disabled = false;
+    btn.textContent = '确认支付';
+    if (r && r.code === 0) {
+      closeModal('confirm-modal');
+      showToast('购买成功', 'ok');
+      setTimeout(function () { location.href = '/wallet'; }, 800);
+      pendingPurchase = null;
+    } else {
+      var msg = (r && r.message) || '购买失败';
+      if (r && r.code === 401) msg = '请先登录后再购买。';
+      errEl.textContent = msg;
+      errEl.style.display = 'block';
+    }
+  });
+
+  // ---------- coupon modal ----------
+  $('#coupon-btn').addEventListener('click', async function () {
+    openModal('coupon-modal');
+    var list = $('#coupon-list');
+    list.innerHTML = '<div style="text-align:center; padding: 28px 0; color: var(--text-3); font-size: 13px;">加载中…</div>';
+    var r = await api('/api/portal/biz/couponRules');
+    var items = (r && r.data) || [];
+    if (!items.length) {
+      // graceful fallback list (12 entries) when API is empty/unavailable
+      items = Array.from({ length: 12 }).map(function (_, i) {
+        var pct = 95 - i * 3;
+        return { name: '满减券 #' + (i + 1), discount: pct + '%', minSpend: '$' + ((i + 1) * 50), validDays: 30 };
+      });
+    }
+    list.innerHTML = '';
+    items.forEach(function (c) {
+      var el = document.createElement('div');
+      el.className = 'coupon-item';
+      var disc = c.discount || (c.amountOff ? '$' + c.amountOff : '95%');
+      var name = c.name || c.title || '优惠券';
+      var info = '满 ' + (c.minSpend || c.threshold || '$50') + ' 可用 · 有效期 ' + (c.validDays || 30) + ' 天';
+      el.innerHTML =
+        '<div><div class="name">' + name + '</div><div class="info">' + info + '</div></div>' +
+        '<div class="disc">' + disc + '</div>';
+      el.addEventListener('click', function () {
+        showToast('已应用：' + name, 'ok');
+        closeModal('coupon-modal');
+      });
+      list.appendChild(el);
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>推广返佣 · 银河量化</title>
+  <link rel="stylesheet" href="/static/portal.css?v=20260501-01" />
+  <link rel="icon" href="/favicon.ico" />
+  <style>
+    /* ---------- Page-scoped: starfield + grid floor ---------- */
+    body.referral {
+      position: relative;
+    }
+    body.referral::before {
+      content: "";
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,.55), transparent 50%),
+        radial-gradient(1px 1px at 28% 64%, rgba(255,255,255,.40), transparent 50%),
+        radial-gradient(1px 1px at 46% 32%, rgba(255,255,255,.45), transparent 50%),
+        radial-gradient(1px 1px at 62% 78%, rgba(255,255,255,.35), transparent 50%),
+        radial-gradient(1px 1px at 80% 22%, rgba(255,255,255,.50), transparent 50%),
+        radial-gradient(1px 1px at 88% 60%, rgba(255,255,255,.40), transparent 50%),
+        radial-gradient(1px 1px at 18% 88%, rgba(255,255,255,.30), transparent 50%),
+        radial-gradient(1px 1px at 72% 8%, rgba(255,255,255,.45), transparent 50%);
+      background-size: 720px 720px;
+      pointer-events: none;
+      opacity: .6;
+      z-index: 0;
+    }
+    body.referral::after {
+      content: "";
+      position: fixed; left: 0; right: 0; bottom: 0;
+      height: 360px;
+      background:
+        linear-gradient(transparent, rgba(43,216,112,.04) 60%, rgba(43,216,112,.06)),
+        repeating-linear-gradient(90deg, transparent 0 80px, rgba(255,255,255,.04) 80px 81px),
+        repeating-linear-gradient(0deg, transparent 0 60px, rgba(255,255,255,.04) 60px 61px);
+      transform: perspective(700px) rotateX(58deg);
+      transform-origin: bottom;
+      mask-image: linear-gradient(transparent, #000 30%);
+      -webkit-mask-image: linear-gradient(transparent, #000 30%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    main.page { position: relative; z-index: 1; }
+
+    /* ---------- Header user pill (top right) ---------- */
+    .user-pill {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 8px 18px 8px 12px;
+      border-radius: 999px;
+      background: var(--bg-3);
+      border: 1px solid var(--line-2);
+      font-size: 13px;
+      color: var(--text);
+    }
+    .user-pill .avatar {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #6cf2a4, #1aa856 65%, #0d6638);
+      display: inline-block;
+    }
+
+    /* ---------- Section card (rounded-pill style from screenshot) ---------- */
+    .ref-card {
+      position: relative;
+      background: linear-gradient(180deg, rgba(20, 23, 31, 0.78), rgba(11, 13, 18, 0.78));
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: 28px 36px;
+      margin-bottom: 22px;
+      box-shadow: 0 18px 60px rgba(0,0,0,.35);
+      overflow: hidden;
+    }
+    .ref-card h2 {
+      font-family: var(--display);
+      font-size: 22px;
+      margin: 0 0 14px;
+      letter-spacing: 0.02em;
+      color: var(--text);
+    }
+
+    /* ---------- Section 1: 我的邀请 ---------- */
+    .my-invite-row {
+      display: flex; align-items: center; gap: 28px;
+      flex-wrap: wrap;
+    }
+    .my-invite-left {
+      display: flex; align-items: center; gap: 14px;
+      flex-wrap: wrap;
+    }
+    .greeting {
+      font-family: var(--display);
+      font-size: 18px;
+      letter-spacing: 0.02em;
+      color: var(--text);
+    }
+    .greeting .uname { font-weight: 600; }
+    .level-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+    }
+    .level-pill .lv-en { font-family: var(--display); }
+    .help-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--text-2);
+      font-size: 13px;
+      cursor: pointer;
+      transition: color .18s;
+    }
+    .help-link:hover { color: var(--accent); }
+    .help-link .q {
+      width: 16px; height: 16px;
+      display: inline-grid; place-items: center;
+      border-radius: 50%;
+      border: 1px solid var(--line-2);
+      font-size: 10px;
+      color: var(--text-3);
+    }
+
+    .my-invite-spacer { flex: 1; }
+    .balance-block {
+      display: flex; align-items: center; gap: 18px;
+      flex-wrap: wrap;
+    }
+    .balance-label { color: var(--text-2); font-size: 14px; }
+    .balance-amount {
+      font-family: var(--display);
+      font-size: 30px;
+      letter-spacing: 0.02em;
+      color: var(--text);
+    }
+    .btn-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 38px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #04130a;
+      font-weight: 600;
+      font-size: 14px;
+      border: none;
+      cursor: pointer;
+      transition: background .18s, transform .18s;
+    }
+    .btn-pill:hover { background: #38e87a; transform: translateY(-1px); }
+    .btn-pill.lg { padding: 14px 44px; font-size: 14.5px; }
+
+    /* tiny 3D crypto coin decoration on right */
+    .coin-deco {
+      position: absolute;
+      right: 28px; top: 50%;
+      transform: translateY(-50%);
+      width: 96px; height: 96px;
+      pointer-events: none;
+      opacity: 0.95;
+    }
+
+    /* ---------- Section 2: 当您邀请朋友注册时 ---------- */
+    .invite-grid {
+      display: flex; align-items: center; gap: 28px;
+    }
+    .invite-text-box {
+      flex: 1;
+      background: rgba(0,0,0,0.32);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px 22px;
+      color: var(--text-2);
+      font-size: 13.5px;
+      line-height: 2.0;
+    }
+    .invite-text-box .link-row {
+      color: var(--text-2);
+      margin-bottom: 4px;
+      word-break: break-all;
+    }
+    .invite-text-box .link-row .link-url {
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+    .invite-text-box .accent { color: var(--accent); font-weight: 600; }
+
+    .copy-cta {
+      flex-shrink: 0;
+      padding: 14px 38px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #04130a;
+      font-weight: 600;
+      font-size: 14px;
+      border: none;
+      cursor: pointer;
+      transition: background .18s, transform .18s;
+    }
+    .copy-cta:hover { background: #38e87a; transform: translateY(-1px); }
+
+    /* ---------- Section 3: 邀请/返利记录 ---------- */
+    .records-title {
+      font-family: var(--display);
+      font-size: 24px;
+      margin: 14px 0 18px;
+      letter-spacing: 0.02em;
+    }
+    .records-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+    }
+    .records-table th {
+      color: var(--text-2);
+      font-weight: 500;
+      font-size: 14px;
+      text-align: left;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--line);
+    }
+    .records-table th:first-child { padding-left: 36px; }
+    .records-table td {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--line);
+      color: var(--text);
+      font-size: 13.5px;
+    }
+    .records-table td:first-child { padding-left: 36px; }
+    .records-table tr:hover td { background: rgba(255,255,255,.02); }
+    .records-empty {
+      text-align: center;
+      color: var(--text-3);
+      padding: 80px 20px !important;
+      font-size: 14px;
+    }
+    .rebate-positive { color: var(--accent); font-family: var(--mono); font-weight: 600; }
+
+    /* ---------- Modal (rebate rules) ---------- */
+    .modal-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.65);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      display: none;
+      align-items: center; justify-content: center;
+      z-index: 100;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal-card {
+      width: min(560px, 92vw);
+      background: linear-gradient(160deg, var(--bg-2), var(--bg-1));
+      border: 1px solid var(--line-2);
+      border-radius: 20px;
+      padding: 28px;
+      box-shadow: 0 30px 80px rgba(0,0,0,.6);
+    }
+    .modal-card h3 { font-family: var(--display); font-size: 22px; margin: 0 0 16px; }
+    .modal-close {
+      float: right;
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: var(--bg-3);
+      color: var(--text-2);
+      border: 1px solid var(--line-2);
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .modal-close:hover { color: var(--text); border-color: var(--accent); }
+
+    .toast {
+      position: fixed;
+      bottom: 32px; left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--bg-3);
+      border: 1px solid var(--accent);
+      color: var(--text);
+      padding: 12px 22px;
+      border-radius: 999px;
+      font-size: 13.5px;
+      opacity: 0;
+      pointer-events: none;
+      transition: all .25s;
+      z-index: 200;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    @media (max-width: 980px) {
+      .ref-card { padding: 22px 20px; border-radius: 20px; }
+      .my-invite-row { gap: 14px; }
+      .my-invite-spacer { display: none; }
+      .balance-block { width: 100%; justify-content: space-between; }
+      .invite-grid { flex-direction: column; align-items: stretch; }
+      .copy-cta { width: 100%; }
+      .coin-deco { display: none; }
+      .records-table th:first-child, .records-table td:first-child { padding-left: 16px; }
+      .records-table th, .records-table td { padding: 14px 12px; font-size: 12.5px; }
+    }
+  </style>
+</head>
+<body class="referral">
+
+<!-- Top bar (matches landing.html) -->
+<header class="topbar">
+  <a class="brand" href="/">
+    <div class="brand-mark">VEGA</div>
+    <span class="brand-name">银河量化</span>
+  </a>
+  <nav class="topnav">
+    <a href="/">首页</a>
+    <a class="active" href="/referral">推广返佣</a>
+    <a href="/mall">商城</a>
+    <a href="/wallet">钱包</a>
+    <a href="/profile">个人中心</a>
+    <a href="/tutorial">使用教程</a>
+    <a class="cta" href="/kzt">控制台</a>
+  </nav>
+  <div class="top-actions">
+    <span class="user-pill" id="userPill"><span class="avatar"></span><span id="userPillName">—</span></span>
+  </div>
+</header>
+
+<main class="page">
+
+  <!-- Section 1: 我的邀请 -->
+  <section class="ref-card" id="cardMyInvite">
+    <h2>我的邀请</h2>
+    <div class="my-invite-row">
+      <div class="my-invite-left">
+        <span class="greeting">Hi，<span class="uname" id="userName">—</span></span>
+        <span class="level-pill"><span class="lv-en" id="userLevel">level 1</span><span id="userRate">（返佣比例 10%）</span></span>
+        <a class="help-link" id="openRulesBtn"><span>返拥等级说明</span><span class="q">?</span></a>
+      </div>
+      <div class="my-invite-spacer"></div>
+      <div class="balance-block">
+        <span class="balance-label">累计获得返佣金额</span>
+        <span class="balance-amount" id="commissionTotal">$0</span>
+        <button class="btn-pill lg" id="withdrawBtn">提现</button>
+      </div>
+    </div>
+
+    <!-- 3D crypto coin decoration (BTC + LTC + ETH stack with line-art gift box) -->
+    <svg class="coin-deco" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <!-- gift box bottom -->
+      <rect x="14" y="68" width="68" height="34" rx="4" fill="#dc4f3c"/>
+      <rect x="14" y="68" width="68" height="6" fill="#9f3327"/>
+      <rect x="44" y="68" width="8" height="34" fill="#fff" opacity=".55"/>
+      <!-- gift box ribbon top -->
+      <rect x="10" y="62" width="76" height="10" rx="2" fill="#e85a47"/>
+      <rect x="44" y="62" width="8" height="10" fill="#fff" opacity=".7"/>
+      <!-- LTC coin (blue) -->
+      <circle cx="74" cy="42" r="16" fill="#345d9d" stroke="#1f3d70" stroke-width="1"/>
+      <text x="74" y="48" text-anchor="middle" font-family="Times New Roman, serif" font-size="18" font-weight="700" fill="#fff">L</text>
+      <!-- BTC coin (orange/gold) -->
+      <circle cx="48" cy="32" r="18" fill="#f3a13a" stroke="#c47a1a" stroke-width="1"/>
+      <text x="48" y="39" text-anchor="middle" font-family="Times New Roman, serif" font-size="22" font-weight="700" fill="#fff">₿</text>
+      <!-- ETH diamond (silver) -->
+      <g transform="translate(94 40)">
+        <path d="M0 -14 L9 0 L0 14 L-9 0 Z" fill="#cfd5e0" stroke="#7d869b" stroke-width="1"/>
+        <path d="M0 -14 L9 0 L0 -3 Z" fill="#9aa1b3"/>
+      </g>
+      <!-- shine -->
+      <ellipse cx="42" cy="26" rx="5" ry="2" fill="#fff" opacity=".6"/>
+    </svg>
+  </section>
+
+  <!-- Section 2: 当您邀请朋友注册时 -->
+  <section class="ref-card">
+    <h2>当您邀请朋友注册时</h2>
+    <div class="invite-grid">
+      <div class="invite-text-box">
+        <div class="link-row">邀请链接地址：<span class="link-url" id="inviteUrl">https://galaxyquantitative.com/sign?code=----</span></div>
+        <div>每当 TA 购买主套餐中的任意套餐时，您都会获得实付款的<span class="accent" id="rateInline">10%</span>返利，</div>
+        <div>此外，当您每邀请个不同的用户购买套餐时，您还将额外获得 1 张 <span class="accent">8.5 折</span>优惠券用于购买主套餐时的折扣</div>
+      </div>
+      <button class="copy-cta" id="copyBtn">复制邀请链接</button>
+    </div>
+  </section>
+
+  <!-- Section 3: 邀请名单(实时关系) -->
+  <h2 class="records-title">邀请名单 <span id="inviteesCount" style="margin-left:8px;font-size:14px;color:var(--text-3);font-weight:normal;">--</span></h2>
+  <section class="ref-card" style="padding: 0; margin-bottom: 22px;">
+    <table class="records-table">
+      <thead>
+        <tr>
+          <th style="width:8%;">序号</th>
+          <th style="width:32%;">受邀人</th>
+          <th style="width:24%;">注册时间</th>
+          <th style="width:18%;">邮箱状态</th>
+          <th style="width:18%;">套餐状态</th>
+        </tr>
+      </thead>
+      <tbody id="inviteesBody">
+        <tr><td colspan="5" class="records-empty">尚未邀请任何用户 · 复制上方链接分享给朋友</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Section 4: 邀请/返利记录(资金流) -->
+  <h2 class="records-title">邀请/返利记录</h2>
+  <section class="ref-card" style="padding: 0;">
+    <table class="records-table">
+      <thead>
+        <tr>
+          <th style="width:14%;">序号</th>
+          <th style="width:28%;">受邀人ID</th>
+          <th style="width:30%;">注册时间</th>
+          <th style="width:28%;">获得返利</th>
+        </tr>
+      </thead>
+      <tbody id="recordsBody">
+        <tr><td colspan="4" class="records-empty">暂无返利</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+</main>
+
+<!-- Footer -->
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-col">
+      <h4>GalaxyQuantitative</h4>
+      <p>银河量化 · 为您的交易赋能<br/>为专业交易者提供机构级跟单基础设施。</p>
+    </div>
+    <div class="footer-col">
+      <h4>联系我们</h4>
+      <a href="https://t.me/" target="_blank" rel="noopener">Telegram</a>
+      <a href="#" onclick="return false">腾讯QQ</a>
+      <a href="mailto:support@galaxyquantitative.local">support@galaxyquantitative.local</a>
+    </div>
+    <div class="footer-col">
+      <h4>友情链接</h4>
+      <a href="https://www.okx.com/" target="_blank" rel="noopener">欧易交易所</a>
+      <a href="https://www.binance.com/" target="_blank" rel="noopener">币安交易所</a>
+      <a href="/tutorial">使用教程</a>
+    </div>
+  </div>
+  <div class="footer-bottom">© 2026 GalaxyQuantitative Team. All rights reserved.</div>
+</footer>
+
+<!-- Rebate-rules modal -->
+<div class="modal-backdrop" id="rulesModal">
+  <div class="modal-card">
+    <button class="modal-close" id="closeRules" aria-label="关闭">×</button>
+    <h3>返佣等级说明</h3>
+    <div id="rulesBody" style="color: var(--text-2); font-size: 13.5px; line-height: 1.85;">
+      正在加载...
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">已复制到剪贴板</div>
+
+<script>
+  // ---------- token / api helper ----------
+  function getToken() {
+    return localStorage.getItem("appToken") ||
+      (document.cookie.match(/(?:^|;\s*)appToken=([^;]+)/) || [])[1] || "";
+  }
+  async function api(path) {
+    const t = getToken();
+    const headers = { "Accept": "application/json" };
+    if (t) headers["Authorization"] = "Bearer " + t;
+    try {
+      const r = await fetch(path, { headers, credentials: "include" });
+      if (!r.ok) return null;
+      return await r.json();
+    } catch (e) { return null; }
+  }
+  function unwrap(resp) {
+    if (!resp) return null;
+    if (resp.data !== undefined) return resp.data;
+    return resp;
+  }
+  function fmtNum(n, digits) {
+    const v = Number(n || 0);
+    return v.toFixed(digits == null ? 2 : digits);
+  }
+  function maskInvitee(srcId) {
+    if (srcId == null || srcId === "") return "—";
+    const s = String(srcId);
+    return "U***" + s.slice(-4).padStart(4, "0");
+  }
+  function fmtTime(ts) {
+    if (!ts) return "—";
+    const d = new Date(typeof ts === "number" && ts < 1e12 ? ts * 1000 : ts);
+    if (isNaN(d.getTime())) return String(ts);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  function showToast(text) {
+    const t = document.getElementById("toast");
+    t.textContent = text;
+    t.classList.add("show");
+    clearTimeout(window.__toastT);
+    window.__toastT = setTimeout(() => t.classList.remove("show"), 1800);
+  }
+
+  // ---------- main load ----------
+  (async () => {
+    // 1) account / userInfo
+    const userResp = await api("/api/portal/account/userInfo");
+    const u = unwrap(userResp) || {};
+    const userName = u.userName || u.username || u.email || "用户";
+    const rate = (u.commissionRate != null) ? Number(u.commissionRate) : 10;
+    const level = u.level || u.commissionLevel || 1;
+    const balance = (u.balance != null) ? Number(u.balance) : (u.commissionBalance != null ? Number(u.commissionBalance) : 0);
+
+    document.getElementById("userName").textContent = userName;
+    document.getElementById("userPillName").textContent = userName;
+    document.getElementById("userLevel").textContent = "level " + level;
+    document.getElementById("userRate").textContent = `（返佣比例 ${rate}%）`;
+    document.getElementById("rateInline").textContent = rate + "%";
+    document.getElementById("commissionTotal").textContent = "$" + fmtNum(balance);
+
+    // 2) invite code
+    const codeResp = await api("/api/portal/home/getInvitatCode");
+    const cdata = unwrap(codeResp) || {};
+    const code = cdata.code || cdata.invitCode || cdata.invitatCode || "----";
+    const url = `${location.protocol}//${location.host}/sign?code=${code}`;
+    document.getElementById("inviteUrl").textContent = url;
+
+    // 3) commission entries (actionType=4)
+    const fundsResp = await api("/api/portal/account/funds?actionType=4");
+    const fdata = unwrap(fundsResp) || {};
+    const list = Array.isArray(fdata) ? fdata
+              : (Array.isArray(fdata.list) ? fdata.list
+              : (Array.isArray(fdata.records) ? fdata.records
+              : (Array.isArray(fdata.items) ? fdata.items : [])));
+    const tbody = document.getElementById("recordsBody");
+    if (list && list.length) {
+      tbody.innerHTML = list.map((r, i) => {
+        const sid = r.sourceUserId || r.sourceId || r.fromUserId || r.userId;
+        const ts = r.createTime || r.createdAt || r.timestamp || r.ts;
+        const amt = r.amount || r.value || r.delta || 0;
+        return `<tr>
+          <td>${i + 1}</td>
+          <td>${maskInvitee(sid)}</td>
+          <td>${fmtTime(ts)}</td>
+          <td class="rebate-positive">+${fmtNum(amt)} USDT</td>
+        </tr>`;
+      }).join("");
+    }
+
+    // 4) live invitee list (real referral relationships)
+    try {
+      const invResp = await api("/api/portal/account/referrals");
+      const invitees = unwrap(invResp) || [];
+      const arr = Array.isArray(invitees) ? invitees : [];
+      const itbody = document.getElementById("inviteesBody");
+      const ihead = document.getElementById("inviteesCount");
+      if (ihead) ihead.textContent = `共 ${arr.length} 位`;
+      if (arr.length) {
+        const maskEmail = (e) => {
+          if (!e || !e.includes("@")) return "—";
+          const [u, d] = e.split("@");
+          return (u.length <= 2 ? u[0] + "*" : u[0] + "***" + u[u.length-1]) + "@" + d;
+        };
+        itbody.innerHTML = arr.map((it, i) => {
+          const verifiedBadge = it.emailVerified
+            ? '<span style="color:var(--accent);">已验证</span>'
+            : '<span style="color:var(--text-3);">未验证</span>';
+          const planBadge = it.hasActivePlan
+            ? '<span class="badge badge-accent">已开通</span>'
+            : '<span style="color:var(--text-3);">未开通</span>';
+          return `<tr>
+            <td>${i + 1}</td>
+            <td>${maskEmail(it.email)}</td>
+            <td>${fmtTime(it.registeredAt)}</td>
+            <td>${verifiedBadge}</td>
+            <td>${planBadge}</td>
+          </tr>`;
+        }).join("");
+      }
+    } catch (e) { /* keep empty state */ }
+  })();
+
+  // ---------- copy invite link ----------
+  document.getElementById("copyBtn").addEventListener("click", async () => {
+    const url = document.getElementById("inviteUrl").textContent.trim();
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast("邀请链接已复制");
+    } catch (e) {
+      const ta = document.createElement("textarea");
+      ta.value = url; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); showToast("邀请链接已复制"); }
+      catch (_) { showToast("复制失败,请手动选择"); }
+      document.body.removeChild(ta);
+    }
+  });
+
+  // ---------- withdraw ----------
+  document.getElementById("withdrawBtn").addEventListener("click", () => {
+    location.href = "/wallet?action=withdraw&type=commission";
+  });
+
+  // ---------- rules modal ----------
+  const modal = document.getElementById("rulesModal");
+  document.getElementById("openRulesBtn").addEventListener("click", async () => {
+    modal.classList.add("open");
+    const body = document.getElementById("rulesBody");
+    body.textContent = "正在加载...";
+    const resp = await api("/api/portal/biz/commissionRebateRules");
+    const data = unwrap(resp);
+    if (!data) {
+      body.innerHTML = `
+        <p>· 直接邀请的用户每完成一次主套餐购买,您将获得实付款 <span style="color:var(--accent);">10% – 30%</span> 不等的返佣,具体比例取决于您的等级。</p>
+        <p>· 等级随累计有效邀请人数提升,等级越高比例越高,且会在每次结算后即时生效。</p>
+        <p>· 返佣即时计入您的余额,可随时提现或抵扣下月订阅。</p>`;
+      return;
+    }
+    const list = Array.isArray(data) ? data : (data.list || data.rules || []);
+    if (list.length) {
+      body.innerHTML = `
+        <table class="data-table" style="width:100%; margin-top:8px;">
+          <thead><tr><th>等级</th><th>条件</th><th>返佣比例</th></tr></thead>
+          <tbody>${list.map(r => `
+            <tr>
+              <td>level ${r.level || r.tier || "-"}</td>
+              <td>${r.condition || r.requirement || r.desc || "—"}</td>
+              <td><span class="badge badge-accent">${r.rate || r.commissionRate || 0}%</span></td>
+            </tr>`).join("")}
+          </tbody>
+        </table>`;
+    } else {
+      body.innerHTML = `<p>${data.note || data.description || "暂无说明"}</p>`;
+    }
+  });
+  document.getElementById("closeRules").addEventListener("click", () => modal.classList.remove("open"));
+  modal.addEventListener("click", (e) => { if (e.target === modal) modal.classList.remove("open"); });
+</script>
+
+</body>
+</html>

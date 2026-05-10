@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>管理员密码恢复 · 银河量化</title>
+  <link rel="stylesheet" href="/static/portal.css?v=20260508-01" />
+  <link rel="icon" href="/favicon.ico" />
+  <style>
+    body.recover-page {
+      min-height: 100vh;
+      display: flex; align-items: flex-start; justify-content: center;
+      position: relative; overflow-x: hidden;
+    }
+    body.recover-page::after {
+      content: ""; position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse 90% 60% at 50% -10%, rgba(94, 92, 230, 0.12), transparent 60%);
+      pointer-events: none; z-index: 0;
+    }
+    .shell {
+      position: relative; z-index: 1;
+      width: min(520px, 94vw);
+      margin: 60px auto 60px;
+    }
+    .brand-stack {
+      display:flex; flex-direction:column; align-items:center; gap:14px;
+      margin-bottom: 24px;
+    }
+    .brand-badge {
+      width:64px; height:64px; border-radius:50%;
+      background: radial-gradient(circle at 30% 30%, #b9b8ff, #5e5ce6 65%, #2c2a9e);
+      color:#04130a; font-family: var(--display); font-weight:700;
+      font-size: 16px; letter-spacing:.12em;
+      display:grid; place-items:center;
+      box-shadow: 0 0 36px rgba(94, 92, 230, 0.4);
+    }
+    .title { font-family: var(--display); font-size: 30px; margin: 0 0 6px; text-align:center; }
+    .subtitle { color: var(--text-2); font-size: 13.5px; line-height: 1.7; text-align: center; margin: 0 4px 22px; }
+    .card {
+      background: var(--bg-2);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 26px 28px;
+    }
+    .step-indicator {
+      display: flex; gap: 6px; justify-content: center; margin-bottom: 18px;
+    }
+    .step-dot {
+      width: 32px; height: 4px; border-radius: 999px;
+      background: var(--bg-3);
+    }
+    .step-dot.active { background: var(--accent); }
+    label { display:block; margin-bottom: 12px; font-size: 13px; color: var(--text-2); }
+    label > span { display:block; margin-bottom: 4px; color: var(--text); font-size: 12.5px; }
+    input[type=text], input[type=email], input[type=password] {
+      width: 100%;
+      background: var(--bg-3); border: 1px solid var(--line-2);
+      color: var(--text);
+      padding: 11px 14px;
+      border-radius: 10px;
+      font-size: 14px; outline: none;
+      transition: border-color .18s, box-shadow .18s;
+    }
+    input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(43, 216, 112, 0.18);
+    }
+    .question-prompt {
+      background: rgba(0, 0, 0, 0.18);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+    .question-prompt > .q-text {
+      color: var(--text); font-size: 13.5px; font-weight: 600; margin-bottom: 8px;
+    }
+    .err {
+      color: #e26060; font-size: 12.5px; min-height: 16px; margin: 4px 2px 14px; display:none;
+    }
+    .err.show { display:block; }
+    .row-actions {
+      display: flex; gap: 10px; justify-content: space-between; align-items: center;
+      margin-top: 18px;
+    }
+    .btn {
+      padding: 11px 22px; border-radius: 999px;
+      border: 1px solid var(--line-2);
+      background: var(--bg-3);
+      color: var(--text);
+      font-size: 14px; cursor: pointer;
+      transition: all .18s;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-primary {
+      background: var(--accent); color: #04130a; border-color: var(--accent);
+      font-weight: 600;
+    }
+    .btn-primary:hover { background: #38e87a; transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+    .pwd-meter {
+      height: 4px; border-radius: 4px; background: var(--bg-3); margin-top: 6px;
+      overflow: hidden;
+    }
+    .pwd-meter > div {
+      height: 100%; width: 0; background: var(--accent);
+      transition: width .2s, background .2s;
+    }
+    .footer-note {
+      text-align: center;
+      color: var(--text-3);
+      font-size: 12px;
+      margin-top: 16px;
+    }
+    .footer-note a { color: var(--text-3); }
+    .footer-note a:hover { color: var(--accent); }
+  </style>
+</head>
+<body class="recover-page">
+
+<div class="shell">
+  <div class="brand-stack">
+    <div class="brand-badge">VEGA</div>
+    <div class="brand-wordmark" style="font-family: var(--display); font-size: 18px; letter-spacing: 0.06em; color: var(--text);">GalaxyQuantitative</div>
+  </div>
+
+  <h1 class="title">管理员密码恢复</h1>
+  <p class="subtitle">输入管理员邮箱,正确回答 3 道安全问题后即可重置密码<br>失败 3 次将锁定 30 分钟</p>
+
+  <div class="card">
+
+    <div class="step-indicator">
+      <div class="step-dot active" id="dot1"></div>
+      <div class="step-dot" id="dot2"></div>
+      <div class="step-dot" id="dot3"></div>
+    </div>
+
+    <!-- STEP 1: identify the admin email -->
+    <form id="formStep1">
+      <label>
+        <span>管理员邮箱 *</span>
+        <input id="email" type="email" required placeholder="admin@yourdomain.com" autocomplete="email" />
+      </label>
+      <div id="err1" class="err"></div>
+      <div class="row-actions">
+        <a class="btn" href="/login">返回登录</a>
+        <button type="submit" id="btn1" class="btn btn-primary">下一步:获取问题</button>
+      </div>
+    </form>
+
+    <!-- STEP 2: answer the 3 questions + new password -->
+    <form id="formStep2" style="display:none;">
+      <div id="questionsHost"></div>
+
+      <label style="margin-top:14px;">
+        <span>新密码 *(至少 6 位)</span>
+        <input id="newPassword" type="password" required minlength="6" autocomplete="new-password" />
+        <div class="pwd-meter"><div id="pwdMeter"></div></div>
+      </label>
+      <label>
+        <span>再次输入新密码 *</span>
+        <input id="newPasswordConfirm" type="password" required minlength="6" autocomplete="new-password" />
+      </label>
+
+      <div id="err2" class="err"></div>
+      <div class="row-actions">
+        <button type="button" class="btn" onclick="goStep(1)">上一步</button>
+        <button type="submit" id="btn2" class="btn btn-primary">提交并重置密码</button>
+      </div>
+    </form>
+
+    <!-- STEP 3: success -->
+    <div id="formStep3" style="display:none; text-align:center; padding: 14px 0;">
+      <div style="font-size: 48px; line-height: 1; margin-bottom: 12px;">✓</div>
+      <div style="font-size: 16px; color: var(--text); margin-bottom: 6px;">密码已重置</div>
+      <div style="color: var(--text-3); font-size: 13px; margin-bottom: 22px;">现在可以使用新密码登录管理员账号。</div>
+      <a class="btn btn-primary" href="/login">前往登录</a>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    没有安全问题?访问 <a href="/admin-setup">/admin-setup</a> 重新初始化(仅在系统未配置时可用)
+  </div>
+</div>
+
+<script>
+const API = "/api/portal";
+let _adminEmail = "";
+let _questionCount = 0;
+
+async function api(path, body, method = "POST") {
+  const opts = { method, headers: { "Content-Type": "application/json" } };
+  if (body !== undefined && method !== "GET") opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  let data = null;
+  try { data = await r.json(); } catch {}
+  if (!r.ok) {
+    const msg = (data && data.message) || `HTTP ${r.status}`;
+    throw new Error(msg);
+  }
+  if (data && typeof data === "object" && "code" in data) {
+    if (data.code !== 0) throw new Error(data.message || `code ${data.code}`);
+    return data.data;
+  }
+  return data;
+}
+
+function showErr(slot, msg) {
+  const el = document.getElementById("err" + slot);
+  el.textContent = msg;
+  el.classList.add("show");
+}
+function clearErr(slot) {
+  const el = document.getElementById("err" + slot);
+  if (!el) return;
+  el.textContent = "";
+  el.classList.remove("show");
+}
+
+function goStep(n) {
+  ["formStep1", "formStep2", "formStep3"].forEach((id, idx) => {
+    document.getElementById(id).style.display = (idx + 1 === n) ? "" : "none";
+  });
+  ["dot1", "dot2", "dot3"].forEach((id, idx) => {
+    document.getElementById(id).classList.toggle("active", idx + 1 <= n);
+  });
+}
+
+document.getElementById("newPassword").addEventListener("input", e => {
+  const v = e.target.value;
+  let score = 0;
+  if (v.length >= 6) score += 1;
+  if (v.length >= 10) score += 1;
+  if (/[A-Z]/.test(v) && /[a-z]/.test(v)) score += 1;
+  if (/\d/.test(v)) score += 1;
+  if (/[^A-Za-z0-9]/.test(v)) score += 1;
+  const meter = document.getElementById("pwdMeter");
+  const colors = ["#e26060", "#e26060", "#e8a23a", "#3aaee8", "#21c177", "#21c177"];
+  meter.style.width = (score * 20) + "%";
+  meter.style.background = colors[score] || colors[0];
+});
+
+document.getElementById("formStep1").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  clearErr(1);
+  const email = document.getElementById("email").value.trim();
+  if (!email) return;
+  const btn = document.getElementById("btn1");
+  btn.disabled = true; btn.textContent = "查询中…";
+  try {
+    const res = await api(
+      "/admin/recover/questions?email=" + encodeURIComponent(email),
+      undefined, "GET"
+    );
+    const items = res.questions || [];
+    if (!items.length) {
+      throw new Error("该邮箱未配置安全问题,无法通过此方式恢复");
+    }
+    _adminEmail = email;
+    _questionCount = items.length;
+    const host = document.getElementById("questionsHost");
+    host.innerHTML = items.map((it, idx) => `
+      <div class="question-prompt">
+        <div class="q-text">问题 ${idx + 1}:${(it.question || "").replace(/</g,"&lt;")}</div>
+        <input type="text" class="recover-answer" data-idx="${idx}" placeholder="答案" required maxlength="80" />
+      </div>
+    `).join("");
+    goStep(2);
+  } catch (err) {
+    showErr(1, err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "下一步:获取问题";
+  }
+});
+
+document.getElementById("formStep2").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  clearErr(2);
+  const newPassword = document.getElementById("newPassword").value;
+  const newPasswordConfirm = document.getElementById("newPasswordConfirm").value;
+  if (newPassword !== newPasswordConfirm) {
+    showErr(2, "两次输入的新密码不一致");
+    return;
+  }
+  if (newPassword.length < 6) {
+    showErr(2, "密码至少 6 位");
+    return;
+  }
+  const inputs = [...document.querySelectorAll(".recover-answer")];
+  const answers = inputs.map(x => x.value.trim());
+  if (answers.some(a => !a) || answers.length !== _questionCount) {
+    showErr(2, "请填写所有答案");
+    return;
+  }
+
+  const btn = document.getElementById("btn2");
+  btn.disabled = true; btn.textContent = "验证中…";
+
+  try {
+    await api("/admin/recover/reset", {
+      email: _adminEmail,
+      answers,
+      newPassword,
+    });
+    goStep(3);
+  } catch (err) {
+    showErr(2, err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "提交并重置密码";
+  }
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>钱包 · 银河量化</title>
+  <link rel="stylesheet" href="/static/portal.css?v=20260501-01" />
+  <link rel="icon" href="/favicon.ico" />
+  <style>
+    body.wallet { position: relative; }
+    body.wallet::before {
+      content: "";
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,.55), transparent 50%),
+        radial-gradient(1px 1px at 28% 64%, rgba(255,255,255,.40), transparent 50%),
+        radial-gradient(1px 1px at 46% 32%, rgba(255,255,255,.45), transparent 50%),
+        radial-gradient(1px 1px at 62% 78%, rgba(255,255,255,.35), transparent 50%),
+        radial-gradient(1px 1px at 80% 22%, rgba(255,255,255,.50), transparent 50%),
+        radial-gradient(1px 1px at 88% 60%, rgba(255,255,255,.40), transparent 50%);
+      background-size: 720px 720px;
+      pointer-events: none; opacity: .55; z-index: 0;
+    }
+    body.wallet::after {
+      content: "";
+      position: fixed; left: 0; right: 0; bottom: 0;
+      height: 360px;
+      background:
+        linear-gradient(transparent, rgba(43,216,112,.04) 60%, rgba(43,216,112,.06)),
+        repeating-linear-gradient(90deg, transparent 0 80px, rgba(255,255,255,.04) 80px 81px),
+        repeating-linear-gradient(0deg, transparent 0 60px, rgba(255,255,255,.04) 60px 61px);
+      transform: perspective(700px) rotateX(58deg);
+      transform-origin: bottom;
+      mask-image: linear-gradient(transparent, #000 30%);
+      -webkit-mask-image: linear-gradient(transparent, #000 30%);
+      pointer-events: none; z-index: 0;
+    }
+    main.page { position: relative; z-index: 1; max-width: 1280px; padding-top: 36px; }
+
+    .user-pill {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 8px 18px 8px 12px;
+      border-radius: 999px;
+      background: var(--bg-3);
+      border: 1px solid var(--line-2);
+      font-size: 13px; color: var(--text);
+    }
+    .user-pill .avatar {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #6cf2a4, #1aa856 65%, #0d6638);
+    }
+
+    .top-row { display: grid; grid-template-columns: 1.55fr 1fr; gap: 22px; margin-bottom: 30px; }
+    @media (max-width: 980px) { .top-row { grid-template-columns: 1fr; } }
+
+    .panel {
+      background: linear-gradient(180deg, rgba(20,23,31,0.78), rgba(11,13,18,0.78));
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 28px 30px;
+      box-shadow: 0 18px 60px rgba(0,0,0,.35);
+      position: relative;
+    }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .panel-head h2 { font-family: var(--display); font-size: 22px; margin: 0; letter-spacing: 0.02em; }
+    .panel-head .head-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--text-2); font-size: 13px; cursor: pointer;
+      transition: color .18s;
+    }
+    .panel-head .head-link:hover { color: var(--accent); }
+    .gear { width: 14px; height: 14px; opacity: 0.7; }
+
+    .wallet-inner {
+      display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; align-items: stretch;
+    }
+    @media (max-width: 760px) { .wallet-inner { grid-template-columns: 1fr; } }
+
+    .balance-card {
+      background: rgba(0,0,0,0.32);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 22px 24px;
+      display: flex; flex-direction: column; justify-content: space-between;
+      min-height: 160px;
+      position: relative;
+      overflow: hidden;
+    }
+    .balance-card .label { color: var(--text-2); font-size: 14px; }
+    .balance-card .amount {
+      font-family: var(--display);
+      font-size: 44px;
+      letter-spacing: 0.02em;
+      margin-top: 6px;
+    }
+    .balance-card .footnote {
+      color: var(--text-3); font-size: 11.5px; margin-top: 14px;
+    }
+    .coin-stack {
+      position: absolute; right: -18px; top: 50%;
+      transform: translateY(-50%);
+      display: grid; place-items: center;
+      width: 160px; height: 140px;
+      pointer-events: none;
+    }
+    .coin {
+      position: absolute; border-radius: 50%;
+      width: 56px; height: 56px;
+      background: radial-gradient(circle at 30% 30%, var(--c1), var(--c2));
+      box-shadow: inset -4px -8px 14px rgba(0,0,0,.3), 0 6px 14px rgba(0,0,0,.4);
+      display: grid; place-items: center;
+      color: #fff; font-weight: 700; font-size: 20px;
+      border: 1px solid rgba(255,255,255,.14);
+    }
+    .coin.btc { --c1: #ffb04a; --c2: #d97a1f; left: 30px; top: 18px; transform: rotate(-12deg); }
+    .coin.eth { --c1: #8fa6ff; --c2: #4f6bd1; left: 70px; top: -2px; transform: rotate(8deg); }
+    .coin.ltc { --c1: #b8c2cc; --c2: #545d68; right: 18px; top: 28px; transform: rotate(20deg); }
+
+    .actions-card {
+      background: rgba(0,0,0,0.32);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 22px 24px;
+      display: flex; flex-direction: column; gap: 14px;
+      min-height: 160px;
+    }
+    .actions-card .label { color: var(--text-2); font-size: 14px; }
+    .actions-card .amount {
+      font-family: var(--display);
+      font-size: 32px;
+      letter-spacing: 0.02em;
+      margin-top: 2px; margin-bottom: 8px;
+    }
+    .btn-pill {
+      width: 100%;
+      padding: 13px 20px;
+      border-radius: 999px;
+      border: none; cursor: pointer;
+      font-size: 14px; font-weight: 600;
+      transition: all .18s;
+    }
+    .btn-pill.primary { background: var(--accent); color: #04130a; }
+    .btn-pill.primary:hover { background: #38e87a; }
+    .btn-pill.ghost { background: transparent; border: 1px solid var(--line-2); color: var(--text); }
+    .btn-pill.ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+    .coupon-list {
+      min-height: 180px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text-3); font-size: 13px;
+      text-align: center;
+    }
+    .coupon-list.empty::before, .coupon-list.empty::after { content: "—— "; opacity: .5; }
+    .coupon-list.empty::after { content: " ——"; }
+    .coupon-list.has-items { display: block; padding-top: 10px; }
+    .coupon-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 18px;
+      background: linear-gradient(90deg, rgba(43,216,112,.10), rgba(43,216,112,.02));
+      border: 1px dashed rgba(43,216,112,.25);
+      border-radius: 12px;
+      margin-bottom: 10px;
+    }
+    .coupon-item .desc {
+      font-family: var(--display);
+      font-size: 22px; color: var(--accent);
+    }
+    .coupon-item .meta { font-size: 12px; color: var(--text-3); }
+
+    /* Resources section */
+    .resources-head {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 18px;
+    }
+    .resources-head h2 {
+      font-family: var(--display); font-size: 28px; margin: 0; letter-spacing: 0.02em;
+    }
+    .filter-chip {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 8px 16px;
+      border-radius: 999px;
+      background: var(--bg-3);
+      border: 1px solid var(--line-2);
+      color: var(--text-2);
+      font-size: 13px; cursor: pointer;
+      transition: border-color .18s;
+    }
+    .filter-chip:hover { border-color: var(--accent); }
+    .filter-chip svg { width: 12px; height: 12px; opacity: 0.7; }
+
+    .resources-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0 10px;
+      font-size: 13.5px;
+    }
+    .resources-table th {
+      color: var(--text-2);
+      font-weight: 500;
+      text-align: left;
+      padding: 8px 22px;
+      font-size: 13.5px;
+    }
+    .resources-table th .sort-arrow {
+      display: inline-block;
+      transform: rotate(-90deg);
+      margin-left: 4px; opacity: 0.6;
+      font-size: 10px;
+    }
+    .resources-table tbody tr {
+      background: rgba(0,0,0,.32);
+      border: 1px solid var(--line);
+    }
+    .resources-table tbody tr td {
+      padding: 16px 22px;
+      color: var(--text);
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+    .resources-table tbody tr td:first-child {
+      border-left: 1px solid var(--line);
+      border-top-left-radius: 14px;
+      border-bottom-left-radius: 14px;
+    }
+    .resources-table tbody tr td:last-child {
+      border-right: 1px solid var(--line);
+      border-top-right-radius: 14px;
+      border-bottom-right-radius: 14px;
+      text-align: right;
+    }
+    .resources-table .row-action {
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .row-btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      background: var(--bg-3);
+      border: 1px solid var(--line-2);
+      color: var(--text);
+      font-size: 12.5px;
+      cursor: pointer;
+      transition: all .18s;
+    }
+    .row-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .row-btn.muted { opacity: 0.55; cursor: default; }
+    .row-btn.muted:hover { border-color: var(--line-2); color: var(--text); }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 0;
+      color: var(--text-3);
+      font-size: 13px;
+    }
+
+    /* Modal */
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 60; backdrop-filter: blur(8px); }
+    .modal.open { display: flex; }
+    .modal-card {
+      background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 30px 32px;
+      width: min(440px, 92vw);
+      box-shadow: 0 30px 80px rgba(0,0,0,.6);
+    }
+    .modal-card h3 {
+      font-family: var(--display); font-size: 22px; margin: 0 0 18px;
+    }
+    .modal-card .form-row { margin-bottom: 14px; }
+    .modal-actions { display: flex; gap: 12px; margin-top: 18px; }
+    .modal-actions .btn-pill { flex: 1; }
+    .filter-menu {
+      position: absolute;
+      background: var(--bg-2);
+      border: 1px solid var(--line-2);
+      border-radius: 12px;
+      padding: 6px 0;
+      min-width: 140px;
+      box-shadow: 0 14px 36px rgba(0,0,0,.5);
+      z-index: 30;
+      display: none;
+    }
+    .filter-menu.open { display: block; }
+    .filter-menu button {
+      display: block; width: 100%;
+      padding: 10px 16px;
+      background: transparent; border: none; color: var(--text);
+      font-size: 13px;
+      text-align: left; cursor: pointer;
+    }
+    .filter-menu button:hover { background: rgba(255,255,255,.04); color: var(--accent); }
+    .filter-menu button.active { color: var(--accent); }
+  </style>
+</head>
+<body class="wallet">
+
+<header class="topbar">
+  <a class="brand" href="/"><div class="brand-mark">VEGA</div><span class="brand-name">银河量化</span></a>
+  <nav class="topnav">
+    <a href="/">首页</a>
+    <a href="/referral">推广返佣</a>
+    <a href="/mall">商城</a>
+    <a class="active" href="/wallet">钱包</a>
+    <a href="/profile">个人中心</a>
+    <a href="/tutorial">使用教程</a>
+    <a class="cta" href="/kzt">控制台</a>
+  </nav>
+  <div class="top-actions">
+    <span class="user-pill" id="userPill"><span class="avatar"></span><span id="userName">--</span></span>
+  </div>
+</header>
+
+<main class="page">
+  <section class="top-row">
+    <div class="panel">
+      <div class="panel-head">
+        <h2>我的钱包</h2>
+        <span class="head-link" id="addrManageBtn">提现地址管理 <svg class="gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+      </div>
+      <div class="wallet-inner">
+        <div class="balance-card">
+          <div>
+            <span class="label">账户余额</span>
+            <div class="amount" id="balance">$0</div>
+          </div>
+          <div class="footnote">部分交易所对小额提现有限制,金额低于 5 USDT 暂不支持提现。</div>
+          <div class="coin-stack" aria-hidden="true">
+            <div class="coin eth">Ξ</div>
+            <div class="coin btc">₿</div>
+            <div class="coin ltc">Ł</div>
+          </div>
+        </div>
+        <div class="actions-card">
+          <span class="label">已提现金额</span>
+          <div class="amount" id="withdrawn">$0</div>
+          <button class="btn-pill primary" id="rechargeBtn">充值</button>
+          <button class="btn-pill ghost" id="withdrawBtn">提现</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>优惠券</h2>
+      </div>
+      <div class="coupon-list empty" id="couponList">暂无优惠券</div>
+    </div>
+  </section>
+
+  <div class="resources-head">
+    <h2>我的资源</h2>
+    <div style="position: relative;">
+      <button class="filter-chip" id="filterChip">
+        <span id="filterLabel">生效中</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="filter-menu" id="filterMenu">
+        <button data-v="effective" class="active">生效中</button>
+        <button data-v="expired">已到期</button>
+        <button data-v="all">全部</button>
+      </div>
+    </div>
+  </div>
+
+  <table class="resources-table">
+    <thead>
+      <tr>
+        <th>购买时间 <span class="sort-arrow">›</span></th>
+        <th>商品</th>
+        <th>续费时间 <span class="sort-arrow">›</span></th>
+        <th>到期时间 <span class="sort-arrow">›</span></th>
+        <th style="text-align: right;">操作</th>
+      </tr>
+    </thead>
+    <tbody id="resourcesBody">
+      <tr><td colspan="5" class="empty-state">加载中...</td></tr>
+    </tbody>
+  </table>
+</main>
+
+<!-- Recharge modal -->
+<div class="modal" id="rechargeModal">
+  <div class="modal-card">
+    <h3>账户充值</h3>
+    <p style="color: var(--text-2); font-size: 13px; margin: -6px 0 18px;">请通过链上转账将 USDT 转入下方地址,系统确认后将自动到账。</p>
+    <div class="form-row">
+      <label>金额 (USDT)</label>
+      <input type="number" id="rechargeAmount" min="1" step="1" placeholder="100" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn-pill ghost" data-close>取消</button>
+      <button class="btn-pill primary" id="rechargeConfirm">确认充值</button>
+    </div>
+  </div>
+</div>
+
+<!-- Withdraw modal -->
+<div class="modal" id="withdrawModal">
+  <div class="modal-card">
+    <h3>账户提现</h3>
+    <p style="color: var(--text-2); font-size: 13px; margin: -6px 0 18px;">提现单笔需大于 5 USDT,请仔细核对收款地址。</p>
+    <div class="form-row">
+      <label>金额 (USDT)</label>
+      <input type="number" id="withdrawAmount" min="5" step="1" placeholder="50" />
+    </div>
+    <div class="form-row">
+      <label style="display:flex; justify-content:space-between; align-items:center;">
+        <span>收款地址 (TRC-20)</span>
+        <span id="withdrawAddrManage" style="font-size:12px; color:var(--text-2); cursor:pointer;">管理地址</span>
+      </label>
+      <select id="withdrawAddress" style="width:100%; background:var(--bg-3); border:1px solid var(--line-2); color:var(--text); padding:10px 12px; border-radius:8px; font-size:13.5px;">
+        <option value="">请选择提现地址</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-pill ghost" data-close>取消</button>
+      <button class="btn-pill primary" id="withdrawConfirm">确认提现</button>
+    </div>
+  </div>
+</div>
+
+<!-- Address manage modal -->
+<div class="modal" id="addrModal">
+  <div class="modal-card">
+    <h3>提现地址管理</h3>
+    <p style="color: var(--text-2); font-size: 13px; margin: -6px 0 18px;">为账户添加常用提现地址,提现时可直接选择。</p>
+    <div id="addrList" style="max-height:220px; overflow-y:auto; margin-bottom:14px;">
+      <div style="text-align:center; padding:18px 0; color:var(--text-3); font-size:12.5px;">加载中...</div>
+    </div>
+    <div class="form-row">
+      <label>地址别名</label>
+      <input type="text" id="addrAlias" placeholder="主钱包" />
+    </div>
+    <div class="form-row">
+      <label>网络</label>
+      <select id="addrNetwork" style="width:100%; background:var(--bg-3); border:1px solid var(--line-2); color:var(--text); padding:10px 12px; border-radius:8px; font-size:13.5px;">
+        <option value="TRC20">TRC-20</option>
+        <option value="ERC20">ERC-20</option>
+        <option value="BEP20">BEP-20</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>钱包地址</label>
+      <input type="text" id="addrValue" placeholder="T..." />
+    </div>
+    <div class="modal-actions">
+      <button class="btn-pill ghost" data-close>关闭</button>
+      <button class="btn-pill primary" id="addrSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .addr-row {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 12px; margin-bottom:8px;
+    background:rgba(0,0,0,.32);
+    border:1px solid var(--line);
+    border-radius:10px;
+    font-size:12.5px;
+  }
+  .addr-row .meta { display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .addr-row .alias { color:var(--text); font-weight:600; }
+  .addr-row .masked { color:var(--text-2); font-family:var(--mono); font-size:12px; }
+  .addr-row .net { color:var(--text-3); font-size:11px; }
+  .addr-row .del {
+    background:transparent; border:1px solid var(--line-2); color:var(--text-2);
+    padding:6px 12px; border-radius:8px; cursor:pointer; font-size:12px;
+    transition:all .18s;
+  }
+  .addr-row .del:hover { border-color:var(--danger); color:var(--danger); }
+</style>
+
+<script>
+const API = "/api/portal";
+const TOKEN = () => localStorage.getItem("appToken") || "";
+async function api(path, opts = {}) {
+  const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+  const t = TOKEN();
+  if (t) headers["Authorization"] = "Bearer " + t;
+  const r = await fetch(API + path, { ...opts, headers });
+  if (r.status === 401) { location.href = "/login"; return null; }
+  return r.json();
+}
+function fmtUsd(n) { return "$" + Number(n || 0).toFixed(2); }
+function fmtTime(ms) {
+  if (!ms) return "—";
+  const d = new Date(ms);
+  return d.toLocaleString("zh-CN", { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true }).replace(/\//g, "/");
+}
+
+let CURRENT_FILTER = "effective";
+
+async function loadAll() {
+  const [user, fundsResp, businessesResp, couponsResp] = await Promise.all([
+    api("/account/userInfo"),
+    api("/account/funds?actionType=-1"),
+    api("/account/businesses?effective=true"),
+    api("/biz/allCoupons")
+  ]);
+
+  if (user?.data) {
+    document.getElementById("userName").textContent = user.data.userName || user.data.email || "—";
+    document.getElementById("balance").textContent = fmtUsd(user.data.balance);
+  }
+  if (fundsResp?.data) {
+    const withdrawn = (fundsResp.data || []).filter(f => f.actionType === 3).reduce((s, f) => s + Math.abs(f.amount || 0), 0);
+    document.getElementById("withdrawn").textContent = fmtUsd(withdrawn);
+  }
+  renderCoupons(couponsResp?.data || []);
+  await loadResources();
+}
+
+function renderCoupons(list) {
+  const el = document.getElementById("couponList");
+  if (!list.length) {
+    el.className = "coupon-list empty";
+    el.textContent = "暂无优惠券";
+    return;
+  }
+  el.className = "coupon-list has-items";
+  el.innerHTML = list.map(c => `
+    <div class="coupon-item">
+      <div class="desc">${c.describtion || c.description || (c.proportion ? Math.round(c.proportion * 10) + "折" : "—")}</div>
+      <div class="meta">有效期至 ${fmtTime(c.expirationTimestamp)}</div>
+    </div>
+  `).join("");
+}
+
+async function loadResources() {
+  let path = "/account/businesses?effective=true";
+  if (CURRENT_FILTER === "expired") path = "/account/businesses?effective=false";
+  if (CURRENT_FILTER === "all") path = "/account/businesses?effective=false&includeAll=true";
+  const r = await api(path);
+  const items = r?.data || [];
+  const tbody = document.getElementById("resourcesBody");
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">暂无记录</td></tr>';
+    return;
+  }
+  const now = Date.now();
+  tbody.innerHTML = items.map(b => {
+    const expired = (b.expirationTimestamp || 0) < now;
+    const productName = b.type === 1 ? `下单名额 ${b.alias ? "【" + b.alias + "】" : ""}` : "跟单名额";
+    const action = expired
+      ? `<span class="row-btn muted">已到期</span>`
+      : `<button class="row-btn" data-act="autoRenew" data-id="${b.id}">${b.autoRenewal ? "已开启自动续费" : "开启自动续费"}</button>
+         <button class="row-btn" data-act="renew" data-id="${b.id}">续费</button>`;
+    const renewTime = b.activationTimestamp ? fmtTime(b.activationTimestamp) : "—";
+    const expTime = (b.expirationTimestamp >= 253402185600000) ? "12/31/9999, 12:00:00 AM" : fmtTime(b.expirationTimestamp);
+    return `
+      <tr>
+        <td>${fmtTime(b.createTimestamp)}</td>
+        <td>${productName}</td>
+        <td>${renewTime}</td>
+        <td>${expTime}</td>
+        <td><div class="row-action">${action}</div></td>
+      </tr>
+    `;
+  }).join("");
+}
+
+// Filter dropdown
+const filterChip = document.getElementById("filterChip");
+const filterMenu = document.getElementById("filterMenu");
+filterChip.addEventListener("click", (e) => {
+  e.stopPropagation();
+  filterMenu.classList.toggle("open");
+});
+document.addEventListener("click", () => filterMenu.classList.remove("open"));
+filterMenu.querySelectorAll("button").forEach(b => {
+  b.addEventListener("click", () => {
+    CURRENT_FILTER = b.dataset.v;
+    document.getElementById("filterLabel").textContent = b.textContent;
+    filterMenu.querySelectorAll("button").forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    filterMenu.classList.remove("open");
+    loadResources();
+  });
+});
+
+// Modals
+function openModal(id) { document.getElementById(id).classList.add("open"); }
+function closeModal(id) { document.getElementById(id).classList.remove("open"); }
+document.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", () => b.closest(".modal").classList.remove("open")));
+document.querySelectorAll(".modal").forEach(m => m.addEventListener("click", e => { if (e.target === m) m.classList.remove("open"); }));
+
+document.getElementById("rechargeBtn").onclick = () => openModal("rechargeModal");
+document.getElementById("withdrawBtn").onclick = () => { populateWithdrawSelect(); openModal("withdrawModal"); };
+document.getElementById("addrManageBtn").onclick = () => { loadAddresses(); openModal("addrModal"); };
+document.getElementById("withdrawAddrManage").onclick = () => {
+  closeModal("withdrawModal");
+  loadAddresses();
+  openModal("addrModal");
+};
+
+/* ---- Withdraw addresses (server-backed) ---- */
+let ADDR_CACHE = [];
+
+function maskAddr(v) {
+  if (!v) return "—";
+  if (v.length <= 8) return v;
+  return v.slice(0, 4) + "..." + v.slice(-4);
+}
+
+async function loadAddresses() {
+  const r = await api("/account/withdraw-addresses");
+  let list = (r && r.data) || [];
+
+  // Migrate any leftover localStorage entries on first run when server list is empty
+  if (!list.length) {
+    let local = [];
+    try { local = JSON.parse(localStorage.getItem("withdrawAddresses") || "[]"); } catch (e) { local = []; }
+    if (Array.isArray(local) && local.length) {
+      for (const it of local) {
+        if (!it || !it.alias || !it.value) continue;
+        await api("/account/withdraw-addresses", {
+          method: "POST",
+          body: JSON.stringify({ alias: it.alias, value: it.value, network: it.network || "TRC20" }),
+        });
+      }
+      localStorage.removeItem("withdrawAddresses");
+      const r2 = await api("/account/withdraw-addresses");
+      list = (r2 && r2.data) || [];
+    }
+  }
+
+  ADDR_CACHE = list;
+  renderAddrList(list);
+  populateWithdrawSelect();
+}
+
+function renderAddrList(list) {
+  const el = document.getElementById("addrList");
+  if (!list.length) {
+    el.innerHTML = '<div style="text-align:center; padding:18px 0; color:var(--text-3); font-size:12.5px;">尚未保存任何地址</div>';
+    return;
+  }
+  el.innerHTML = list.map(a => `
+    <div class="addr-row">
+      <div class="meta">
+        <span class="alias">${(a.alias || "—").replace(/</g, "&lt;")}</span>
+        <span class="masked">${maskAddr(a.value || "")}</span>
+        <span class="net">${(a.network || "TRC20").replace(/</g, "&lt;")}</span>
+      </div>
+      <button class="del" data-id="${a.id}">删除</button>
+    </div>
+  `).join("");
+  el.querySelectorAll("button.del").forEach(b => {
+    b.addEventListener("click", async () => {
+      const id = b.dataset.id;
+      if (!id) return;
+      const r = await api("/account/withdraw-addresses/" + encodeURIComponent(id), { method: "DELETE" });
+      if (r && r.code === 0) {
+        loadAddresses();
+      } else {
+        alert((r && r.message) || "删除失败");
+      }
+    });
+  });
+}
+
+function populateWithdrawSelect() {
+  const sel = document.getElementById("withdrawAddress");
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">请选择提现地址</option>' +
+    ADDR_CACHE.map(a => `<option value="${(a.value || "").replace(/"/g, "&quot;")}">${(a.alias || "—").replace(/</g, "&lt;")} · ${maskAddr(a.value || "")}</option>`).join("");
+  if (cur && ADDR_CACHE.some(a => a.value === cur)) sel.value = cur;
+}
+
+document.getElementById("rechargeConfirm").onclick = async () => {
+  const amount = parseFloat(document.getElementById("rechargeAmount").value || "0");
+  if (!amount || amount <= 0) return alert("请输入有效金额");
+  const r = await api("/wallet/recharge", { method: "POST", body: JSON.stringify({ amount }) });
+  if (r?.code === 0) {
+    closeModal("rechargeModal");
+    document.getElementById("rechargeAmount").value = "";
+    loadAll();
+  } else {
+    alert(r?.message || "充值失败");
+  }
+};
+document.getElementById("withdrawConfirm").onclick = async () => {
+  const amount = parseFloat(document.getElementById("withdrawAmount").value || "0");
+  const address = (document.getElementById("withdrawAddress").value || "").trim();
+  if (!amount || amount < 5) return alert("提现单笔需大于 5 USDT");
+  if (!address) return alert("请选择收款地址");
+  const r = await api("/wallet/withdraw", { method: "POST", body: JSON.stringify({ amount, address }) });
+  if (r?.code === 0) {
+    closeModal("withdrawModal");
+    document.getElementById("withdrawAmount").value = "";
+    document.getElementById("withdrawAddress").value = "";
+    loadAll();
+  } else {
+    alert(r?.message || "提现失败");
+  }
+};
+document.getElementById("addrSave").onclick = async () => {
+  const alias = document.getElementById("addrAlias").value.trim();
+  const value = document.getElementById("addrValue").value.trim();
+  const network = document.getElementById("addrNetwork").value || "TRC20";
+  if (!alias || !value) return alert("请填写完整");
+  const r = await api("/account/withdraw-addresses", {
+    method: "POST",
+    body: JSON.stringify({ alias, value, network }),
+  });
+  if (r?.code === 0) {
+    document.getElementById("addrAlias").value = "";
+    document.getElementById("addrValue").value = "";
+    loadAddresses();
+  } else {
+    alert(r?.message || "保存失败");
+  }
+};
+
+loadAll();
+loadAddresses();
+</script>
+
+</body>
+</html>

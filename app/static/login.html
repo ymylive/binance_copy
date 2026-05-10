@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>登录 · 银河量化</title>
+  <link rel="stylesheet" href="/static/portal.css?v=20260501-01" />
+  <link rel="icon" href="/favicon.ico" />
+  <style>
+    /* ---------- Pre-auth full-screen layout ---------- */
+    body.login-page {
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      position: relative;
+      overflow-x: hidden;
+    }
+    /* starfield (matches landing.html hero pattern) */
+    body.login-page::before {
+      content: "";
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,.55), transparent 50%),
+        radial-gradient(1px 1px at 28% 64%, rgba(255,255,255,.40), transparent 50%),
+        radial-gradient(1px 1px at 46% 32%, rgba(255,255,255,.45), transparent 50%),
+        radial-gradient(1px 1px at 62% 78%, rgba(255,255,255,.35), transparent 50%),
+        radial-gradient(1px 1px at 80% 22%, rgba(255,255,255,.50), transparent 50%),
+        radial-gradient(1px 1px at 88% 60%, rgba(255,255,255,.40), transparent 50%),
+        radial-gradient(1px 1px at 18% 88%, rgba(255,255,255,.30), transparent 50%),
+        radial-gradient(1px 1px at 72% 8%, rgba(255,255,255,.45), transparent 50%),
+        radial-gradient(1px 1px at 33% 8%, rgba(255,255,255,.45), transparent 50%),
+        radial-gradient(1px 1px at 92% 84%, rgba(255,255,255,.35), transparent 50%);
+      background-size: 700px 700px;
+      pointer-events: none;
+      opacity: .6;
+      z-index: 0;
+    }
+    body.login-page::after {
+      content: "";
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse 90% 60% at 50% -10%, rgba(43, 216, 112, 0.10), transparent 60%),
+        radial-gradient(ellipse 50% 40% at 88% 50%, rgba(94, 92, 230, 0.08), transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ---------- Centered login container ---------- */
+    .login-shell {
+      position: relative;
+      z-index: 1;
+      width: min(440px, 92vw);
+      margin: 80px auto 60px;
+      text-align: center;
+    }
+
+    .brand-stack {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 38px;
+    }
+    .brand-badge {
+      width: 72px; height: 72px; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #6cf2a4, #1aa856 65%, #0d6638);
+      color: #04130a;
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: 0.12em;
+      display: grid; place-items: center;
+      box-shadow: 0 0 36px rgba(43, 216, 112, 0.4);
+    }
+    .brand-wordmark {
+      font-family: var(--display);
+      font-size: 22px;
+      letter-spacing: 0.06em;
+      color: var(--text);
+    }
+
+    .login-title {
+      font-family: var(--display);
+      font-size: 56px;
+      letter-spacing: 0.04em;
+      margin: 0 0 36px;
+      color: var(--text);
+    }
+
+    /* ---------- Inputs ---------- */
+    .field {
+      position: relative;
+      margin-bottom: 14px;
+    }
+    .field input {
+      width: 100%;
+      background: var(--bg-3);
+      border: 1px solid var(--line-2);
+      color: var(--text);
+      padding: 14px 16px 14px 46px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-family: var(--sans);
+      outline: none;
+      transition: border-color .18s, box-shadow .18s;
+    }
+    .field input::placeholder { color: var(--text-3); }
+    .field input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(43, 216, 112, 0.18);
+    }
+    .field svg.icon {
+      position: absolute;
+      left: 16px; top: 50%;
+      transform: translateY(-50%);
+      width: 18px; height: 18px;
+      color: var(--text-3);
+      pointer-events: none;
+    }
+    .field.has-error input { border-color: var(--danger); }
+
+    .error-msg {
+      color: var(--danger);
+      font-size: 12.5px;
+      text-align: left;
+      margin: -6px 4px 14px;
+      min-height: 16px;
+      display: none;
+    }
+    .error-msg.show { display: block; }
+
+    /* ---------- Button row ---------- */
+    .btn-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .btn-back {
+      padding: 14px 18px;
+      border-radius: 999px;
+      background: var(--bg-3);
+      border: 1px solid var(--line-2);
+      color: var(--text);
+      font-size: 14px;
+      cursor: pointer;
+      transition: all .18s;
+    }
+    .btn-back:hover { background: var(--bg-2); border-color: var(--accent); color: var(--accent); }
+    .btn-submit {
+      display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+      padding: 14px 18px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #04130a;
+      font-weight: 600;
+      font-size: 14px;
+      border: none;
+      cursor: pointer;
+      transition: background .18s, transform .18s;
+    }
+    .btn-submit:hover { background: #38e87a; transform: translateY(-1px); }
+    .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .btn-submit svg { width: 16px; height: 16px; }
+
+    /* ---------- Links row ---------- */
+    .links-row {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 18px;
+      font-size: 12.5px;
+      color: var(--text-3);
+    }
+    .links-row a {
+      color: var(--text-3);
+      transition: color .18s;
+    }
+    .links-row a:hover { color: var(--accent); }
+
+    /* ---------- Bottom-right isometric crypto graphic ---------- */
+    .iso-deco {
+      position: fixed;
+      right: 60px;
+      bottom: 40px;
+      width: 320px;
+      height: auto;
+      opacity: 0.5;
+      pointer-events: none;
+      z-index: 0;
+    }
+    @media (max-width: 880px) {
+      .iso-deco { width: 200px; right: 12px; bottom: 12px; opacity: 0.35; }
+      .login-title { font-size: 40px; }
+      .login-shell { margin-top: 56px; }
+    }
+    @media (max-width: 480px) {
+      .iso-deco { display: none; }
+      .btn-row { grid-template-columns: 1fr; }
+    }
+
+    /* ---------- Tiny back-home brand (corner, optional) ---------- */
+    .home-corner {
+      position: fixed;
+      top: 22px; left: 28px;
+      display: flex; align-items: center; gap: 10px;
+      color: var(--text-2);
+      font-size: 13px;
+      z-index: 2;
+      opacity: 0.7;
+      transition: opacity .18s;
+    }
+    .home-corner:hover { opacity: 1; color: var(--accent); }
+    .home-corner .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #6cf2a4, #1aa856);
+      box-shadow: 0 0 8px rgba(43,216,112,.6);
+    }
+  </style>
+</head>
+<body class="login-page">
+
+<a class="home-corner" href="/"><span class="dot"></span><span>返回主页</span></a>
+
+<div class="login-shell">
+  <div class="brand-stack">
+    <div class="brand-badge">VEGA</div>
+    <div class="brand-wordmark">GalaxyQuantitative</div>
+  </div>
+
+  <h1 class="login-title">登录</h1>
+
+  <form id="loginForm" novalidate autocomplete="on">
+    <div class="field" id="fieldEmail">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="8" r="4"/>
+        <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>
+      </svg>
+      <input id="emailInput" name="email" type="text" placeholder="用户名 / 邮箱" required autocomplete="username" />
+    </div>
+
+    <div class="field" id="fieldPwd">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="4" y="10" width="16" height="11" rx="2"/>
+        <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+        <circle cx="12" cy="15.5" r="1.2" fill="currentColor"/>
+      </svg>
+      <input id="pwdInput" name="password" type="password" placeholder="请输入登录密码" required autocomplete="current-password" />
+    </div>
+    <div class="error-msg" id="errMsg"></div>
+
+    <div class="btn-row">
+      <button type="button" class="btn-back" id="backBtn">返回主页</button>
+      <button type="submit" class="btn-submit" id="submitBtn">
+        <span>立即登录</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 12h14"/>
+          <path d="M13 5l7 7-7 7"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="links-row">
+      <a href="/forgot">忘记密码</a>
+      <a href="/register">创建一个账号?</a>
+    </div>
+    <div class="links-row" style="margin-top: 6px; justify-content: center;">
+      <a href="/admin-recover" style="font-size: 12px;">管理员忘记密码?用安全问题恢复</a>
+    </div>
+  </form>
+</div>
+
+<!-- Bottom-right isometric line-art crypto deco (coin + cube + cube) -->
+<svg class="iso-deco" viewBox="0 0 320 220" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <defs>
+    <linearGradient id="isoStroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2bd870" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#5dadec" stop-opacity="0.6"/>
+    </linearGradient>
+  </defs>
+  <g stroke="url(#isoStroke)" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" fill="none">
+
+    <!-- Floor grid -->
+    <g opacity="0.35">
+      <path d="M40 180 L300 130"/>
+      <path d="M30 195 L295 145"/>
+      <path d="M60 200 L120 100"/>
+      <path d="M150 200 L210 100"/>
+      <path d="M230 200 L290 110"/>
+    </g>
+
+    <!-- Big isometric cube (left) -->
+    <g transform="translate(60 80)">
+      <!-- top face -->
+      <path d="M0 30 L40 10 L80 30 L40 50 Z"/>
+      <!-- left face -->
+      <path d="M0 30 L0 80 L40 100 L40 50 Z"/>
+      <!-- right face -->
+      <path d="M80 30 L80 80 L40 100 L40 50 Z"/>
+      <!-- inner edges -->
+      <path d="M40 50 L40 100" opacity="0.6"/>
+      <!-- accent dots -->
+      <circle cx="20" cy="40" r="1.5" fill="#2bd870"/>
+      <circle cx="60" cy="40" r="1.5" fill="#2bd870"/>
+    </g>
+
+    <!-- Stacked smaller cube (center-back) -->
+    <g transform="translate(160 50)">
+      <path d="M0 20 L26 8 L52 20 L26 32 Z"/>
+      <path d="M0 20 L0 52 L26 64 L26 32 Z"/>
+      <path d="M52 20 L52 52 L26 64 L26 32 Z"/>
+      <path d="M26 32 L26 64" opacity="0.6"/>
+    </g>
+
+    <!-- Coin (right) -->
+    <g transform="translate(220 110)">
+      <!-- coin body: thick disc, isometric -->
+      <ellipse cx="40" cy="20" rx="40" ry="14"/>
+      <ellipse cx="40" cy="28" rx="40" ry="14" opacity="0.7"/>
+      <path d="M0 20 L0 28"/>
+      <path d="M80 20 L80 28"/>
+      <!-- B mark on coin -->
+      <text x="40" y="26" text-anchor="middle" font-family="Times New Roman, serif" font-size="18" font-weight="700" fill="url(#isoStroke)" stroke="none">₿</text>
+    </g>
+
+    <!-- Floating tiny cube (top-right) -->
+    <g transform="translate(260 30)">
+      <path d="M0 12 L14 4 L28 12 L14 20 Z"/>
+      <path d="M0 12 L0 30 L14 38 L14 20 Z"/>
+      <path d="M28 12 L28 30 L14 38 L14 20 Z"/>
+    </g>
+
+    <!-- Connector dotted lines -->
+    <g opacity="0.45" stroke-dasharray="2 4">
+      <path d="M120 100 L186 70"/>
+      <path d="M186 90 L240 110"/>
+    </g>
+  </g>
+</svg>
+
+<script>
+  // ---------- Helpers ----------
+  const emailEl = document.getElementById("emailInput");
+  const pwdEl = document.getElementById("pwdInput");
+  const errEl = document.getElementById("errMsg");
+  const fieldPwd = document.getElementById("fieldPwd");
+  const fieldEmail = document.getElementById("fieldEmail");
+  const submitBtn = document.getElementById("submitBtn");
+  const form = document.getElementById("loginForm");
+
+  function setError(msg) {
+    errEl.textContent = msg || "";
+    if (msg) {
+      errEl.classList.add("show");
+      fieldPwd.classList.add("has-error");
+    } else {
+      errEl.classList.remove("show");
+      fieldPwd.classList.remove("has-error");
+      fieldEmail.classList.remove("has-error");
+    }
+  }
+
+  document.getElementById("backBtn").addEventListener("click", () => {
+    location.href = "/";
+  });
+
+  // Auto-focus first empty field
+  setTimeout(() => {
+    if (!emailEl.value) emailEl.focus();
+    else pwdEl.focus();
+  }, 50);
+
+  // Clear error on input
+  [emailEl, pwdEl].forEach(el => el.addEventListener("input", () => {
+    if (errEl.classList.contains("show")) setError("");
+  }));
+
+  // ---------- Submit ----------
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    setError("");
+
+    const email = emailEl.value.trim();
+    const password = pwdEl.value;
+    if (!email) { fieldEmail.classList.add("has-error"); emailEl.focus(); return; }
+    if (!password) { setError("请输入登录密码"); pwdEl.focus(); return; }
+
+    submitBtn.disabled = true;
+    const originalLabel = submitBtn.querySelector("span").textContent;
+    submitBtn.querySelector("span").textContent = "登录中...";
+
+    try {
+      const r = await fetch("/api/portal/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify({ email, password }),
+        credentials: "include",
+      });
+
+      let data = null;
+      try { data = await r.json(); } catch (_) {}
+
+      // Envelope-aware: portal returns 200 with code != 0 on auth failures.
+      const envelopeFail = data && typeof data === "object" && "code" in data && data.code !== 0;
+      if (!r.ok || envelopeFail) {
+        // Lockout path — code === 2 carries `lockedSeconds`.
+        const locked = data && Number(data.lockedSeconds || 0);
+        if (locked > 0) {
+          startLockoutCountdown(locked);
+          return;
+        }
+        const msg = (data && (data.message || data.msg || data.error)) || `登录失败 (${r.status})`;
+        setError(msg);
+        return;
+      }
+
+      const token = data && (data.token || (data.data && data.data.token));
+      if (token) {
+        try { localStorage.setItem("appToken", token); } catch (_) {}
+      }
+
+      // Optional: persist user info if returned
+      const user = data && (data.user || (data.data && data.data.user));
+      if (user) {
+        try { localStorage.setItem("appUser", JSON.stringify(user)); } catch (_) {}
+      }
+
+      // Redirect to home
+      location.href = "/";
+    } catch (err) {
+      setError("网络异常,请稍后重试");
+    } finally {
+      // Skip re-enabling if we entered lockout mode (the countdown handler owns the button).
+      if (!submitBtn.dataset.lockedUntil) {
+        submitBtn.disabled = false;
+        submitBtn.querySelector("span").textContent = originalLabel;
+      }
+    }
+  });
+
+  // ---------- Lockout countdown ----------
+  let lockoutTimerId = null;
+  function startLockoutCountdown(totalSeconds) {
+    const endAt = Date.now() + totalSeconds * 1000;
+    submitBtn.disabled = true;
+    submitBtn.dataset.lockedUntil = String(endAt);
+    emailEl.disabled = true;
+    pwdEl.disabled = true;
+    const span = submitBtn.querySelector("span");
+
+    function tick() {
+      const remainMs = endAt - Date.now();
+      if (remainMs <= 0) {
+        clearInterval(lockoutTimerId);
+        lockoutTimerId = null;
+        delete submitBtn.dataset.lockedUntil;
+        submitBtn.disabled = false;
+        emailEl.disabled = false;
+        pwdEl.disabled = false;
+        span.textContent = "立即登录";
+        setError("");
+        return;
+      }
+      const m = Math.floor(remainMs / 60000);
+      const s = Math.floor((remainMs % 60000) / 1000);
+      span.textContent = `锁定中 ${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+      setError(`错误次数过多,账号已锁定。剩余 ${m} 分 ${s} 秒后自动解锁。`);
+    }
+    tick();
+    lockoutTimerId = setInterval(tick, 1000);
+  }
+</script>
+
+</body>
+</html>

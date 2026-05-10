@@ -1,0 +1,1554 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>管理员控制台 · 银河量化</title>
+  <link rel="stylesheet" href="/static/galaxy-tokens.css?v=20260508-01" />
+  <link rel="icon" href="/favicon.ico" />
+  <style>
+    /* — Admin-only overrides on top of galaxy-tokens.css — */
+    html, body { margin: 0; padding: 0; }
+    body.gq-app { min-height: 100vh; }
+
+    /* Admin badge: 橙金色 (与 SVIP 金区分,与控制台用户区分) */
+    .gq-admin-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px;
+      border-radius: var(--gq-radius-pill);
+      background: linear-gradient(90deg, #FF7A00, #FFAE3A);
+      color: #1c0e00;
+      font-size: var(--gq-text-xs);
+      font-weight: var(--gq-fw-bold);
+      letter-spacing: .06em;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.4);
+    }
+    .gq-admin-badge svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2; }
+
+    /* Page header */
+    .page-head {
+      margin-bottom: var(--gq-gap);
+    }
+    .page-head__eyebrow {
+      font-size: var(--gq-text-xs);
+      color: var(--gq-text-3);
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .page-head__title {
+      font-size: var(--gq-text-xl);
+      font-weight: var(--gq-fw-medium);
+      color: var(--gq-text);
+      margin: 0 0 6px;
+    }
+    .page-head__sub {
+      font-size: var(--gq-text-sm);
+      color: var(--gq-text-3);
+      line-height: 1.7;
+      margin: 0;
+    }
+    .page-head__sub code {
+      font-family: var(--gq-mono);
+      background: var(--gq-fill-light);
+      border: 1px solid var(--gq-line-3);
+      border-radius: var(--gq-radius-xs);
+      padding: 1px 6px;
+      font-size: 12px;
+      color: var(--gq-text-2);
+    }
+
+    /* Card head with count + action */
+    .card-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: var(--gq-gap);
+      margin-bottom: 12px;
+    }
+    .card-head__title {
+      font-size: var(--gq-text-md);
+      font-weight: var(--gq-fw-medium);
+      color: var(--gq-text);
+      display: inline-flex; align-items: baseline; gap: 10px;
+    }
+    .card-head__title .count {
+      font-size: var(--gq-text-xs);
+      color: var(--gq-text-3);
+      font-weight: var(--gq-fw-regular);
+    }
+
+    /* Form grid for signal injection */
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px 16px;
+    }
+    .form-grid label {
+      display: flex; flex-direction: column; gap: 6px;
+      font-size: var(--gq-text-xs);
+      color: var(--gq-text-2);
+    }
+    .form-grid .span-2 { grid-column: span 2; }
+    .form-grid .span-3 { grid-column: span 3; }
+    @media (max-width: 760px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .form-grid .span-2, .form-grid .span-3 { grid-column: auto; }
+    }
+    .form-actions {
+      display: flex; align-items: center; gap: 10px;
+      margin-top: 16px; flex-wrap: wrap;
+    }
+    .form-actions .status-text {
+      font-size: var(--gq-text-xs); color: var(--gq-text-3);
+    }
+
+    /* Sidebar footer link (返回控制台) */
+    .gq-sidebar-back {
+      display: flex; align-items: center; gap: 12px;
+      padding: 11px 14px;
+      margin-bottom: 6px;
+      border-radius: var(--gq-radius-menu);
+      color: var(--gq-text-2);
+      font-size: var(--gq-text-base);
+      text-decoration: none;
+      cursor: pointer;
+      transition: background-color .2s ease, color .2s ease;
+    }
+    .gq-sidebar-back:hover {
+      background: var(--gq-mint-soft);
+      color: var(--gq-mint-dark);
+      text-decoration: none;
+    }
+    .gq-sidebar-back svg {
+      width: 18px; height: 18px;
+      stroke: currentColor; fill: none; stroke-width: 1.8;
+    }
+
+    /* Tab panels */
+    .tab-panel { display: none; }
+    .tab-panel.is-active { display: block; }
+
+    /* Pill action badge for signals */
+    .gq-pill--open   { background: var(--gq-up-soft);   color: var(--gq-up); }
+    .gq-pill--add    { background: var(--gq-mint-soft); color: var(--gq-mint-dark); }
+    .gq-pill--reduce { background: var(--gq-warn-soft); color: var(--gq-warn); }
+    .gq-pill--close  { background: var(--gq-down-soft); color: var(--gq-down); }
+    .gq-pill--long   { background: var(--gq-up-soft);   color: var(--gq-up); }
+    .gq-pill--short  { background: var(--gq-down-soft); color: var(--gq-down); }
+    .gq-pill--ok     { background: var(--gq-up-soft);   color: var(--gq-up); }
+    .gq-pill--warn   { background: var(--gq-warn-soft); color: var(--gq-warn); }
+    .gq-pill--del    { background: var(--gq-down-soft); color: var(--gq-down); }
+
+    /* Toast stack */
+    .toast-stack {
+      position: fixed; right: 24px; bottom: 24px; z-index: 1000;
+      display: flex; flex-direction: column; gap: 8px;
+      max-width: 360px;
+    }
+    .toast {
+      padding: 12px 16px;
+      background: var(--gq-card);
+      border: 1px solid var(--gq-mint-3);
+      border-left: 3px solid var(--gq-mint);
+      border-radius: var(--gq-radius);
+      color: var(--gq-text);
+      font-size: var(--gq-text-sm);
+      box-shadow: var(--gq-shadow-hover);
+      animation: toast-in .25s ease;
+    }
+    .toast.error {
+      border-color: var(--gq-down);
+      border-left-color: var(--gq-down);
+    }
+    @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+    /* Gate card (no admin) */
+    .gate-wrap {
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: 32px 16px;
+    }
+    .gate-card {
+      max-width: 480px; width: 100%;
+      padding: 36px 40px;
+      background: var(--gq-card);
+      border: 1px solid var(--gq-line-3);
+      border-radius: var(--gq-radius);
+      text-align: center;
+      box-shadow: var(--gq-shadow-card);
+    }
+    .gate-card__mark {
+      width: 48px; height: 48px;
+      margin: 0 auto 18px;
+      border-radius: 50%;
+      background: var(--gq-mint);
+      color: #fff;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .gate-card__mark svg { width: 24px; height: 24px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+    .gate-card h2 {
+      font-family: var(--gq-display);
+      font-size: 24px;
+      color: var(--gq-text);
+      margin: 0 0 12px;
+    }
+    .gate-card p {
+      color: var(--gq-text-2); margin: 0 0 18px;
+      line-height: 1.7; font-size: var(--gq-text-sm);
+    }
+    .gate-card pre {
+      text-align: left;
+      background: var(--gq-fill-light);
+      border: 1px solid var(--gq-line-3);
+      border-radius: var(--gq-radius-sm);
+      padding: 12px 14px;
+      font-family: var(--gq-mono);
+      font-size: 12px;
+      color: var(--gq-text-2);
+      overflow-x: auto;
+    }
+    .gate-card .actions {
+      margin-top: 22px;
+      display: flex; gap: 10px; justify-content: center;
+    }
+
+    /* Telegram form (modeled after bu-4-system.png) */
+    .tg-row {
+      display: flex; align-items: center; gap: var(--gq-gap);
+      padding: 16px 20px;
+      background: var(--gq-card);
+      border: 1px solid var(--gq-line-3);
+      border-radius: var(--gq-radius);
+      margin-bottom: 12px;
+    }
+    .tg-row__left {
+      display: flex; align-items: center; gap: 12px;
+      flex: 0 0 280px; min-width: 0;
+    }
+    .tg-row__icon {
+      width: 40px; height: 40px;
+      border-radius: var(--gq-radius-sm);
+      background: var(--gq-mint-soft);
+      color: var(--gq-mint-dark);
+      display: inline-flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .tg-row__icon svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+    .tg-row__meta { display: flex; flex-direction: column; min-width: 0; }
+    .tg-row__title {
+      font-size: var(--gq-text-base);
+      color: var(--gq-text);
+      font-weight: var(--gq-fw-medium);
+    }
+    .tg-row__desc {
+      font-size: var(--gq-text-xs);
+      color: var(--gq-text-3);
+      margin-top: 2px;
+    }
+    .tg-row__field-label {
+      font-size: var(--gq-text-base);
+      color: var(--gq-text-2);
+      flex: 0 0 70px;
+      text-align: right;
+    }
+    .tg-row__input { flex: 1; min-width: 0; }
+    .tg-row__actions {
+      display: flex; gap: var(--gq-gap-sm);
+      flex-shrink: 0;
+    }
+    @media (max-width: 980px) {
+      .tg-row { flex-wrap: wrap; }
+      .tg-row__left { flex: 1 1 100%; }
+      .tg-row__field-label { display: none; }
+      .tg-row__input { flex: 1 1 100%; }
+      .tg-row__actions { flex: 1 1 100%; justify-content: flex-end; }
+    }
+
+    .tg-section-title {
+      font-size: var(--gq-text-md);
+      font-weight: var(--gq-fw-medium);
+      color: var(--gq-text);
+      margin: 24px 0 12px;
+    }
+
+    /* Switch label combo */
+    .switch-row {
+      display: inline-flex; align-items: center; gap: 12px;
+      font-size: var(--gq-text-base);
+      color: var(--gq-text);
+    }
+    .check-row {
+      display: flex; align-items: center; gap: 8px;
+      font-size: var(--gq-text-sm);
+      color: var(--gq-text-2);
+    }
+    .check-row input[type="checkbox"] {
+      width: 16px; height: 16px;
+      accent-color: var(--gq-mint);
+    }
+
+    /* Sample message preview */
+    .sample-preview {
+      white-space: pre-wrap;
+      padding: 16px;
+      background: var(--gq-fill-light);
+      border: 1px solid var(--gq-line-3);
+      border-radius: var(--gq-radius-sm);
+      color: var(--gq-text-2);
+      font-size: var(--gq-text-xs);
+      line-height: 1.7;
+      font-family: var(--gq-mono);
+      margin: 0;
+    }
+
+    /* Binance status grid */
+    .bn-status {
+      margin: 0 0 18px;
+      padding: 16px 18px;
+      background: var(--gq-fill-light);
+      border: 1px solid var(--gq-line-3);
+      border-radius: var(--gq-radius-sm);
+      display: grid;
+      grid-template-columns: repeat(4, minmax(140px, 1fr));
+      gap: 14px 24px;
+    }
+    @media (max-width: 760px) {
+      .bn-status { grid-template-columns: repeat(2, 1fr); }
+    }
+    .bn-status__label {
+      font-size: var(--gq-text-xs);
+      color: var(--gq-text-3);
+      margin-bottom: 4px;
+    }
+    .bn-status__value {
+      font-size: var(--gq-text-base);
+      font-weight: var(--gq-fw-medium);
+      color: var(--gq-text);
+      font-family: var(--gq-mono);
+    }
+    .bn-status__value.label-cell { font-family: var(--gq-sans); }
+
+    .bn-step {
+      display: grid;
+      grid-template-columns: 36px 1fr;
+      gap: 10px 14px;
+      margin-bottom: 14px;
+    }
+    .bn-step__num {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: var(--gq-mint-soft);
+      color: var(--gq-mint-dark);
+      font-weight: var(--gq-fw-bold);
+      font-size: var(--gq-text-sm);
+      display: inline-flex; align-items: center; justify-content: center;
+      margin-left: 4px;
+    }
+    .bn-step__body {
+      line-height: 1.7;
+      color: var(--gq-text-2);
+      font-size: var(--gq-text-sm);
+    }
+    .bn-step__body strong { color: var(--gq-text); font-weight: var(--gq-fw-medium); }
+    .bn-step__body code,
+    .bn-step__body kbd {
+      background: var(--gq-fill-light);
+      border: 1px solid var(--gq-line-3);
+      border-radius: var(--gq-radius-xs);
+      padding: 1px 6px;
+      font-family: var(--gq-mono);
+      font-size: 12px;
+      color: var(--gq-text-2);
+    }
+    .bn-step__body a { color: var(--gq-mint-dark); }
+
+    .bn-paste-hint {
+      padding: 10px 14px;
+      background: var(--gq-mint-soft);
+      border-left: 3px solid var(--gq-mint);
+      border-radius: var(--gq-radius-sm);
+      font-size: var(--gq-text-sm);
+      color: var(--gq-mint-dark);
+      margin-bottom: 12px;
+    }
+    .bn-paste-hint__hint {
+      color: var(--gq-text-3); margin-left: 10px;
+    }
+
+    /* Tables — wrap controls */
+    .table-scroll { overflow-x: auto; }
+    .gq-data-table { /* alias-friendly class for callers */ }
+    .gq-data-table th, .gq-data-table td { white-space: nowrap; }
+
+    /* Helpers */
+    .nowrap { white-space: nowrap; }
+    .text-mono { font-family: var(--gq-mono); }
+    .text-muted { color: var(--gq-text-3); }
+    .text-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; display: inline-block; vertical-align: middle; }
+    .strike { text-decoration: line-through; color: var(--gq-text-3); }
+  </style>
+</head>
+<body class="gq-app">
+
+<!-- ============== Gate (not-admin / not-logged-in fallback) ============== -->
+<div class="gate-wrap" id="gateCard" style="display:none;">
+  <div class="gate-card">
+    <div class="gate-card__mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6"/><circle cx="12" cy="16.5" r=".7" fill="currentColor"/></svg>
+    </div>
+    <h2 id="gateTitle">无管理员权限</h2>
+    <p id="gateMsg">当前账号 <code id="gateUser">--</code> 不在管理员名单中。</p>
+    <p class="gq-text-xs gq-muted" style="margin-bottom:10px;">如需开通管理员,请将邮箱加入服务器的 <code>runtime/portal/admin_emails.txt</code>(每行一个邮箱),然后重新登录:</p>
+    <pre id="gateHint">echo "your-email@example.com" >> runtime/portal/admin_emails.txt</pre>
+    <div class="actions">
+      <a class="gq-btn gq-btn--ghost" href="/">返回首页</a>
+      <a class="gq-btn gq-btn--primary" href="/login">切换账号</a>
+    </div>
+  </div>
+</div>
+
+<!-- ============== Admin shell (three-pane) ============== -->
+<div class="gq-shell" id="adminApp" style="display:none;">
+
+  <!-- ===== Sidebar ===== -->
+  <aside class="gq-sidebar">
+    <a class="gq-brand" href="/" aria-label="银河量化 GalaxyQuant">
+      <span class="gq-brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 3l1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6L12 3z"/></svg>
+      </span>
+      <span class="gq-brand-text">
+        <span class="gq-brand-text-cn">银河量化</span>
+        <span class="gq-brand-text-en">GALAXYQUANT</span>
+      </span>
+    </a>
+
+    <ul class="gq-menu" id="adminMenu" role="tablist">
+      <li class="gq-menu-item is-active" data-tab="signals" role="tab">
+        <span class="gq-menu-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><polyline points="13 2 4 14 12 14 11 22 20 10 12 10 13 2"/></svg>
+        </span>
+        <span>信号注入</span>
+      </li>
+      <li class="gq-menu-item" data-tab="users" role="tab">
+        <span class="gq-menu-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </span>
+        <span>用户管理</span>
+      </li>
+      <li class="gq-menu-item" data-tab="businesses" role="tab">
+        <span class="gq-menu-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M16.5 9.4 7.55 4.24"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        </span>
+        <span>套餐订单</span>
+      </li>
+      <li class="gq-menu-item" data-tab="telegram" role="tab">
+        <span class="gq-menu-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </span>
+        <span>通知配置</span>
+      </li>
+      <li class="gq-menu-item" data-tab="binance" role="tab">
+        <span class="gq-menu-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+        </span>
+        <span>Binance 登录</span>
+      </li>
+    </ul>
+
+    <div class="gq-sidebar-footer">
+      <a class="gq-sidebar-back" href="/kzt">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        <span>返回控制台</span>
+      </a>
+    </div>
+  </aside>
+
+  <!-- ===== Topbar ===== -->
+  <header class="gq-topbar">
+    <div class="gq-topbar-left">
+      <span class="gq-greeting" id="userGreeting">Hello --</span>
+    </div>
+    <div class="gq-topbar-right">
+      <button class="gq-icon-btn" type="button" aria-label="设置">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.36.16.7.36 1 .6"/></svg>
+      </button>
+      <button class="gq-icon-btn" type="button" aria-label="通知">
+        <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      </button>
+      <span class="gq-svip-badge" aria-label="SVIP">
+        <svg viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 13L2 9z"/></svg>
+        SVIP
+      </span>
+      <span class="gq-admin-badge" id="adminBadge" style="display:none;" aria-label="管理员">
+        <svg viewBox="0 0 24 24"><path d="M12 2 4 6v6c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V6l-8-4z"/></svg>
+        ADMIN
+      </span>
+      <span class="gq-points">
+        <span class="gq-points-avatar" id="userAvatar" aria-hidden="true"></span>
+        <span id="userPill">积分: 0</span>
+      </span>
+    </div>
+  </header>
+
+  <!-- ===== Main ===== -->
+  <main class="gq-main">
+
+    <!-- ======== TAB: SIGNALS ======== -->
+    <section class="tab-panel is-active" data-panel="signals">
+      <div class="page-head">
+        <div class="page-head__eyebrow">ADMIN · 信号注入</div>
+        <h1 class="page-head__title">向引擎事件流写入合成信号</h1>
+        <p class="page-head__sub">普通订阅用户的 <code>RoutedExecutor</code> 会按现有规则跟随;此入口可用于联调、压测和应急人工带单。所有操作携带审计标记 <code>[admin:用户名]</code>。</p>
+      </div>
+
+      <div class="gq-card" style="margin-bottom: var(--gq-gap-lg);">
+        <div class="card-head">
+          <div class="card-head__title">注入新信号</div>
+        </div>
+        <form id="signalForm" class="form-grid">
+          <label>
+            <span>跟单员 ID *</span>
+            <input class="gq-input" name="leader_id" required placeholder="例如 SP1234567890" />
+          </label>
+          <label>
+            <span>组合 ID (可选)</span>
+            <input class="gq-input" name="portfolio_id" placeholder="留空则与跟单员 ID 相同" />
+          </label>
+          <label>
+            <span>交易所</span>
+            <select class="gq-select" name="exchange">
+              <option value="binance">Binance</option>
+              <option value="okx">OKX</option>
+              <option value="gate">Gate.io</option>
+              <option value="bitget">Bitget</option>
+            </select>
+          </label>
+
+          <label>
+            <span>交易对 *</span>
+            <input class="gq-input" name="symbol" required placeholder="BTCUSDT" />
+          </label>
+          <label>
+            <span>方向 *</span>
+            <select class="gq-select" name="side" required>
+              <option value="BUY">BUY</option>
+              <option value="SELL">SELL</option>
+            </select>
+          </label>
+          <label>
+            <span>持仓方向</span>
+            <select class="gq-select" name="position_side">
+              <option value="BOTH">BOTH</option>
+              <option value="LONG">LONG</option>
+              <option value="SHORT">SHORT</option>
+            </select>
+          </label>
+
+          <label>
+            <span>动作 *</span>
+            <select class="gq-select" name="action" required>
+              <option value="open">开仓 open</option>
+              <option value="add">加仓 add</option>
+              <option value="reduce">减仓 reduce</option>
+              <option value="close">平仓 close</option>
+            </select>
+          </label>
+          <label>
+            <span>数量 *</span>
+            <input class="gq-input" name="executed_qty" type="number" step="0.0001" min="0" required placeholder="0.05" />
+          </label>
+          <label>
+            <span>成交价 *</span>
+            <input class="gq-input" name="avg_price" type="number" step="0.01" min="0" required placeholder="65000" />
+          </label>
+
+          <label>
+            <span>跟随杠杆 (可选)</span>
+            <input class="gq-input" name="follower_leverage" type="number" step="1" min="1" max="125" placeholder="20" />
+          </label>
+          <label class="span-2">
+            <span>备注 (可选)</span>
+            <input class="gq-input" name="note" placeholder="例如:晚高峰人工补单 / 联调测试" />
+          </label>
+
+          <div class="form-actions span-3">
+            <button type="submit" class="gq-btn gq-btn--primary">注入信号</button>
+            <button type="reset" class="gq-btn gq-btn--ghost">重置</button>
+            <span id="signalStatus" class="status-text"></span>
+          </div>
+        </form>
+      </div>
+
+      <div class="gq-card">
+        <div class="card-head">
+          <div class="card-head__title">
+            近期信号
+            <span class="count" id="signalsCount">--</span>
+          </div>
+          <button id="signalRefresh" class="gq-btn gq-btn--ghost gq-btn--sm" type="button">刷新</button>
+        </div>
+        <div class="table-scroll">
+          <table class="gq-table gq-data-table">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>跟单员</th>
+                <th>交易对</th>
+                <th>动作</th>
+                <th>方向</th>
+                <th>数量</th>
+                <th>成交价</th>
+                <th>状态</th>
+                <th>备注</th>
+              </tr>
+            </thead>
+            <tbody id="signalsBody">
+              <tr><td colspan="9" class="gq-empty">加载中…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======== TAB: USERS ======== -->
+    <section class="tab-panel" data-panel="users">
+      <div class="page-head">
+        <div class="page-head__eyebrow">ADMIN · 用户管理</div>
+        <h1 class="page-head__title">用户列表</h1>
+        <p class="page-head__sub">查看所有注册用户、调整权限与余额。</p>
+      </div>
+
+      <div class="gq-card">
+        <div class="card-head">
+          <div class="card-head__title">
+            全部账号
+            <span class="count" id="usersCount">--</span>
+          </div>
+          <button id="userRefresh" class="gq-btn gq-btn--ghost gq-btn--sm" type="button">刷新</button>
+        </div>
+        <div class="table-scroll">
+          <table class="gq-table gq-data-table">
+            <thead>
+              <tr>
+                <th>邮箱</th>
+                <th>用户名</th>
+                <th>邀请码</th>
+                <th>邀请人</th>
+                <th>邀请数</th>
+                <th>余额</th>
+                <th>套餐</th>
+                <th>邮箱验证</th>
+                <th>权限</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="usersBody">
+              <tr><td colspan="10" class="gq-empty">加载中…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======== TAB: BUSINESSES ======== -->
+    <section class="tab-panel" data-panel="businesses">
+      <div class="page-head">
+        <div class="page-head__eyebrow">ADMIN · 套餐订单</div>
+        <h1 class="page-head__title">套餐订单</h1>
+        <p class="page-head__sub">全平台所有套餐记录(含已绑定 API、已过期、已归档)。</p>
+      </div>
+
+      <div class="gq-card">
+        <div class="card-head">
+          <div class="card-head__title">
+            订单列表
+            <span class="count" id="bizCount">--</span>
+          </div>
+          <button id="bizRefresh" class="gq-btn gq-btn--ghost gq-btn--sm" type="button">刷新</button>
+        </div>
+        <div class="table-scroll">
+          <table class="gq-table gq-data-table">
+            <thead>
+              <tr>
+                <th>用户</th>
+                <th>套餐别名</th>
+                <th>类型</th>
+                <th>购买时间</th>
+                <th>到期时间</th>
+                <th>关联交易所</th>
+                <th>关联账户</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody id="bizBody">
+              <tr><td colspan="8" class="gq-empty">加载中…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======== TAB: TELEGRAM ======== -->
+    <section class="tab-panel" data-panel="telegram">
+      <div class="page-head">
+        <div class="page-head__eyebrow">ADMIN · 通知配置</div>
+        <h1 class="page-head__title">通知渠道设置</h1>
+        <p class="page-head__sub">绑定通知渠道后,引擎检测到的每一条开仓 / 加仓 / 减仓 / 平仓信号都会推送到指定聊天,包含成交价、成交量、当前均价、本笔与累计盈亏。配置仅管理员可见,token 在响应中以掩码形式回显。</p>
+      </div>
+
+      <form id="tgForm">
+        <!-- General settings row: switch + language + window + console base -->
+        <div class="tg-row">
+          <div class="tg-row__left">
+            <span class="tg-row__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            </span>
+            <div class="tg-row__meta">
+              <span class="tg-row__title">启用通知 (总开关)</span>
+              <span class="tg-row__desc">开启后所有渠道都生效;关闭则停止全部推送。</span>
+            </div>
+          </div>
+          <span class="gq-spacer"></span>
+          <label class="gq-switch">
+            <input type="checkbox" id="tgEnabled" />
+            <span class="gq-switch__track"></span>
+          </label>
+        </div>
+
+        <div class="form-grid" style="background: var(--gq-card); border: 1px solid var(--gq-line-3); border-radius: var(--gq-radius); padding: 18px 20px; margin-bottom: 12px;">
+          <label>
+            <span>语言</span>
+            <select class="gq-select" id="tgLanguage">
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+          <label>
+            <span>批量合并窗口 (秒)</span>
+            <input class="gq-input" id="tgBatchWindow" type="number" min="0" max="60" step="1" value="3" />
+          </label>
+          <label>
+            <span>控制台链接前缀</span>
+            <input class="gq-input" id="tgConsoleBase" type="text" placeholder="https://copy.cornna.xyz" />
+          </label>
+        </div>
+
+        <div class="tg-section-title">Telegram</div>
+
+        <!-- Telegram bot token row (mirrors bu-4-system.png layout) -->
+        <div class="tg-row">
+          <div class="tg-row__left">
+            <span class="tg-row__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            </span>
+            <div class="tg-row__meta">
+              <span class="tg-row__title">Telegram 机器人</span>
+              <span class="tg-row__desc">关注 @GalaxyQuant bot,通过 /start 获取会话 ID</span>
+            </div>
+          </div>
+          <span class="tg-row__field-label">Bot Token</span>
+          <span class="tg-row__input">
+            <input class="gq-input" id="tgBotToken" type="password" placeholder="留空保留现有 token (掩码显示)" />
+          </span>
+          <div class="tg-row__actions">
+            <button type="button" class="gq-btn gq-btn--ghost gq-btn--sm" onclick="clearMaskedField('botToken','Telegram Bot Token')">清空</button>
+          </div>
+        </div>
+
+        <div class="tg-row">
+          <div class="tg-row__left">
+            <span class="tg-row__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </span>
+            <div class="tg-row__meta">
+              <span class="tg-row__title">聊天 ID 列表</span>
+              <span class="tg-row__desc">每行一个,支持 -100xxx 群组 ID</span>
+            </div>
+          </div>
+          <span class="tg-row__field-label">会话 ID</span>
+          <span class="tg-row__input">
+            <textarea class="gq-input" id="tgChatIds" rows="3" style="height:auto;padding:10px 12px;" placeholder="例如&#10;123456789&#10;-1001234567890"></textarea>
+          </span>
+          <div class="tg-row__actions"></div>
+        </div>
+
+        <div class="tg-section-title">其他通道 (可选)</div>
+
+        <div class="tg-row">
+          <div class="tg-row__left">
+            <span class="tg-row__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            </span>
+            <div class="tg-row__meta">
+              <span class="tg-row__title">钉钉</span>
+              <span class="tg-row__desc">机器人 webhook URL</span>
+            </div>
+          </div>
+          <span class="tg-row__field-label">Webhook</span>
+          <span class="tg-row__input">
+            <input class="gq-input" id="tgDingtalk" type="password" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" />
+          </span>
+          <div class="tg-row__actions">
+            <button type="button" class="gq-btn gq-btn--ghost gq-btn--sm" onclick="clearMaskedField('dingtalkWebhook','钉钉 webhook')">清空</button>
+          </div>
+        </div>
+
+        <div class="tg-row">
+          <div class="tg-row__left">
+            <span class="tg-row__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </span>
+            <div class="tg-row__meta">
+              <span class="tg-row__title">飞书 / Lark</span>
+              <span class="tg-row__desc">自定义机器人 webhook URL</span>
+            </div>
+          </div>
+          <span class="tg-row__field-label">Webhook</span>
+          <span class="tg-row__input">
+            <input class="gq-input" id="tgFeishu" type="password" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/…" />
+          </span>
+          <div class="tg-row__actions">
+            <button type="button" class="gq-btn gq-btn--ghost gq-btn--sm" onclick="clearMaskedField('feishuWebhook','飞书 webhook')">清空</button>
+          </div>
+        </div>
+
+        <div class="tg-row">
+          <div class="tg-row__left">
+            <span class="tg-row__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M20 12c0 4-5 8-8 8s-8-4-8-8a8 8 0 1 1 16 0z"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/></svg>
+            </span>
+            <div class="tg-row__meta">
+              <span class="tg-row__title">Discord</span>
+              <span class="tg-row__desc">频道 webhook URL</span>
+            </div>
+          </div>
+          <span class="tg-row__field-label">Webhook</span>
+          <span class="tg-row__input">
+            <input class="gq-input" id="tgDiscord" type="password" placeholder="https://discord.com/api/webhooks/…" />
+          </span>
+          <div class="tg-row__actions">
+            <button type="button" class="gq-btn gq-btn--ghost gq-btn--sm" onclick="clearMaskedField('discordWebhook','Discord webhook')">清空</button>
+          </div>
+        </div>
+
+        <div class="tg-section-title">事件过滤</div>
+
+        <div class="gq-card" style="display: flex; flex-wrap: wrap; gap: 24px;">
+          <label class="check-row">
+            <input type="checkbox" id="tgNotifyAdmin" />
+            <span>推送管理员注入信号</span>
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="tgNotifyAuto" />
+            <span>推送自动信号</span>
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="tgIncludePnl" />
+            <span>包含盈亏字段</span>
+          </label>
+        </div>
+
+        <div class="form-actions" style="margin-top: var(--gq-gap-lg);">
+          <button type="submit" class="gq-btn gq-btn--primary">保存配置</button>
+          <button type="button" id="tgTestBtn" class="gq-btn gq-btn--ghost">向所有通道发送测试</button>
+          <span id="tgStatus" class="status-text"></span>
+        </div>
+      </form>
+
+      <div class="gq-card" style="margin-top: var(--gq-gap-lg);">
+        <div class="card-head">
+          <div class="card-head__title">消息样例</div>
+        </div>
+        <pre class="sample-preview">平仓 · BTCUSDT
+时间: 11-06 15:42:18
+方向: SELL (LONG)
+成交价: 81,500.0000
+成交量: 0.0500
+当前均价: 65,000.0000
+本笔盈亏: +825.0000
+累计盈亏: +825.0000
+持仓余量: 0.0000
+交易员: SP-LIVE-DEMO
+交易所: binance</pre>
+        <p class="gq-text-xs gq-muted" style="margin: 10px 0 0;">字段说明:成交价 = 该笔填单价 · 当前均价 = 跨笔加权开仓均价 · 本笔盈亏 = 该笔减/平仓相对均价的实现盈亏 · 累计盈亏 = 该(交易员/交易对/方向)上的累计实现盈亏 · 持仓余量 = 减仓后剩余的方向性头寸。</p>
+      </div>
+    </section>
+
+    <!-- ======== TAB: BINANCE LOGIN ======== -->
+    <section class="tab-panel" data-panel="binance">
+      <div class="page-head">
+        <div class="page-head__eyebrow">ADMIN · Binance 登录</div>
+        <h1 class="page-head__title">Binance 一键登录</h1>
+        <p class="page-head__sub">Binance 跟单接口需要登录态 Cookie。这里提供「生成令牌 → 粘贴凭证 → 自动写入」三步式流程,无需手动 SCP 文件,也无需重启服务。粘贴的凭证会保存到服务器的 <code>cookies.json</code>,引擎会在 30 秒内识别并自动连入。</p>
+      </div>
+
+      <div class="gq-card">
+        <div class="bn-status" id="bnStatusCard">
+          <div>
+            <div class="bn-status__label">连接状态</div>
+            <div class="bn-status__value label-cell" id="bnStatusBadge">
+              <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--gq-text-4);margin-right:8px;vertical-align:middle;"></span>
+              <span>未知</span>
+            </div>
+          </div>
+          <div>
+            <div class="bn-status__label">已存 Cookie</div>
+            <div class="bn-status__value" id="bnStatusCount">--</div>
+          </div>
+          <div>
+            <div class="bn-status__label">最后更新</div>
+            <div class="bn-status__value" id="bnStatusUpdated">--</div>
+          </div>
+          <div>
+            <div class="bn-status__label">关键 Header</div>
+            <div class="bn-status__value label-cell" id="bnStatusHeaders">--</div>
+          </div>
+        </div>
+
+        <div style="margin: 16px 0 22px;">
+          <div class="bn-step">
+            <span class="bn-step__num">1</span>
+            <div class="bn-step__body">
+              <strong>登录 Binance 跟单页</strong><br>
+              浏览器打开 <a href="https://www.binance.com/zh-CN/copy-trading" target="_blank" rel="noopener">https://www.binance.com/zh-CN/copy-trading</a> 完成登录(账号要先看过任意一位带单员的详情页,后端才会下发跟单 Cookie)。
+            </div>
+          </div>
+          <div class="bn-step">
+            <span class="bn-step__num">2</span>
+            <div class="bn-step__body">
+              <strong>打开 DevTools 的 Network 面板</strong><br>
+              按 <kbd>F12</kbd>(macOS:<kbd>⌥⌘I</kbd>)→ 切到 <strong>Network</strong> 标签页 → 在筛选框输入 <code>copy-trade</code> → 在跟单页内点开任意一位带单员,Network 列表会立刻刷出新请求。
+            </div>
+          </div>
+          <div class="bn-step">
+            <span class="bn-step__num">3</span>
+            <div class="bn-step__body">
+              <strong>右键任选一条请求 → Copy → Copy as cURL (bash)</strong><br>
+              如果右键里没有 Copy as cURL (bash),选 <code>Copy as cURL</code> 也行;Firefox / Safari 菜单文案略有不同,但都在「复制」二级菜单下。
+            </div>
+          </div>
+          <div class="bn-step">
+            <span class="bn-step__num">4</span>
+            <div class="bn-step__body">
+              <strong>回到此页面 → 点「① 生成一次性令牌」→ 粘贴 cURL → 提交</strong><br>
+              提交后状态卡会自动变成 <span class="gq-pill gq-pill--up">已连接</span>,引擎会立刻使用新登录态轮询持仓,无需重启。
+            </div>
+          </div>
+        </div>
+
+        <form id="bnForm">
+          <div class="form-actions" style="margin-bottom: 12px;">
+            <button type="button" id="bnGenToken" class="gq-btn gq-btn--primary">① 生成一次性令牌</button>
+            <span id="bnTokenStatus" class="status-text">先点这里生成 10 分钟内有效的令牌,再粘 cURL</span>
+          </div>
+
+          <div class="bn-paste-hint">
+            <strong>⬇ 把整段 cURL 粘到下面这个框里</strong>
+            <span class="bn-paste-hint__hint">(也接受 Cookie JSON 数组或原始 HTTP header 段;系统会自动识别)</span>
+          </div>
+
+          <label style="display: flex; flex-direction: column; gap: 6px; font-size: var(--gq-text-xs); color: var(--gq-text-2);">
+            <span style="color: var(--gq-text); font-weight: var(--gq-fw-medium);">② 在此粘贴 — DevTools 复制的 cURL / Cookie JSON / 原始 Header</span>
+            <textarea id="bnRaw" class="gq-input" rows="11" style="height:auto;padding:12px;font-family:var(--gq-mono);font-size:12px;min-height:200px;" placeholder="把整段 cURL 粘到这里。粘贴后大概长这样:&#10;&#10;curl 'https://www.binance.com/bapi/futures/v1/private/future/copy-trade/lead-positions' \&#10;  -H 'authority: www.binance.com' \&#10;  -H 'accept: */*' \&#10;  -H 'cookie: bnc-uuid=xxx; aws-waf-token=xxx; csrftoken=xxx; ...' \&#10;  -H 'csrftoken: xxx' \&#10;  -H 'bnc-uuid: xxx' \&#10;  --compressed"></textarea>
+          </label>
+
+          <div class="form-actions">
+            <button type="submit" class="gq-btn gq-btn--primary" id="bnSubmitBtn" disabled>提交并写入</button>
+            <button type="button" id="bnRefreshStatus" class="gq-btn gq-btn--ghost">刷新状态</button>
+            <button type="button" id="bnClearBtn" class="gq-btn gq-btn--danger">清除现有 Cookie</button>
+            <span id="bnSubmitStatus" class="status-text"></span>
+          </div>
+        </form>
+
+        <p class="gq-text-xs gq-muted" style="margin: 18px 0 0; padding-top: 14px; border-top: 1px solid var(--gq-line-3);">
+          <strong style="color: var(--gq-text-2);">为什么需要这一步?</strong>
+          Binance 跟单接口对 HttpOnly Cookie + 浏览器签名做了严格校验,任何脚本/伪造请求都会被风控拦截。因此跟单引擎必须直接持有真实浏览器的登录态。这里的 cURL/Cookie 提取仅在你点击生成令牌后的 10 分钟内可用,且每个令牌只能使用一次。
+        </p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div class="toast-stack" id="toastStack"></div>
+
+<script>
+const API = "/api/portal";
+const TOK = () => localStorage.getItem("appToken") || "";
+
+async function api(path, opts = {}) {
+  const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+  if (TOK()) headers.Authorization = "Bearer " + TOK();
+  const r = await fetch(API + path, { ...opts, headers, credentials: "include" });
+  if (r.status === 401) { location.href = "/login"; return null; }
+  let body;
+  try { body = await r.json(); } catch { body = null; }
+  if (!r.ok) throw new Error((body && body.message) || `HTTP ${r.status}`);
+  // Auto-unwrap envelope
+  if (body && typeof body === "object" && "code" in body && "data" in body) {
+    if (body.code !== 0) throw new Error(body.message || `code ${body.code}`);
+    return body.data;
+  }
+  return body;
+}
+
+function toast(msg, kind = "ok") {
+  const el = document.createElement("div");
+  el.className = "toast" + (kind === "error" ? " error" : "");
+  el.textContent = msg;
+  document.getElementById("toastStack").appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+function fmtTime(ms) {
+  if (!ms) return "—";
+  if (ms >= 253402185600000) return "永久";
+  return new Date(ms).toLocaleString("zh-CN", { hour12: false });
+}
+function fmtMoney(n) {
+  return "$" + Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function escapeHtml(s) {
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// ---------- bootstrap: gate by /admin/whoami ----------
+async function bootstrap() {
+  // First-run check: no admin configured yet → setup wizard.
+  try {
+    const r = await fetch("/api/portal/admin/setup/status");
+    const j = await r.json();
+    if (j && j.data && j.data.needsSetup) {
+      location.href = "/admin-setup";
+      return;
+    }
+  } catch (_) { /* non-fatal */ }
+
+  if (!TOK()) { location.href = "/login"; return; }
+  let me;
+  try {
+    me = await api("/admin/whoami");
+  } catch (e) {
+    if (/401/.test(e.message)) { location.href = "/login"; return; }
+    showGate("加载失败", e.message);
+    return;
+  }
+  const greet = document.getElementById("userGreeting");
+  if (greet) greet.textContent = "Hello " + (me.userName || me.email || "--");
+  const pill = document.getElementById("userPill");
+  if (pill) pill.textContent = "积分: " + (me.points != null ? me.points : 0);
+  if (!me.isAdmin) { showGate("无管理员权限", `当前账号 ${me.email} 不在管理员名单中。`); return; }
+  document.getElementById("adminBadge").style.display = "";
+  document.getElementById("adminApp").style.display = "";
+  setupTabs();
+  loadAllTabs();
+}
+
+function showGate(title, msg) {
+  document.getElementById("gateTitle").textContent = title;
+  document.getElementById("gateMsg").innerHTML = escapeHtml(msg);
+  document.getElementById("gateCard").style.display = "";
+}
+
+// ---------- tabs (sidebar menu + hash routing) ----------
+function setupTabs() {
+  const items = document.querySelectorAll("#adminMenu .gq-menu-item");
+  function activate(target) {
+    items.forEach(x => x.classList.toggle("is-active", x.dataset.tab === target));
+    document.querySelectorAll(".tab-panel").forEach(p => {
+      p.classList.toggle("is-active", p.dataset.panel === target);
+    });
+  }
+  items.forEach(b => b.addEventListener("click", () => {
+    const t = b.dataset.tab;
+    if (location.hash !== "#" + t) location.hash = "#" + t;
+    activate(t);
+  }));
+  window.addEventListener("hashchange", () => {
+    const h = (location.hash || "").replace(/^#/, "");
+    if (h && document.querySelector(`.tab-panel[data-panel="${h}"]`)) activate(h);
+  });
+  const initial = (location.hash || "").replace(/^#/, "") || "signals";
+  activate(initial);
+}
+
+// ---------- signals ----------
+async function loadSignals() {
+  const tbody = document.getElementById("signalsBody");
+  try {
+    const list = await api("/admin/signals/recent?limit=80");
+    document.getElementById("signalsCount").textContent = `共 ${list.length} 条`;
+    if (!list.length) {
+      tbody.innerHTML = '<tr><td colspan="9" class="gq-empty">暂无数据</td></tr>';
+      return;
+    }
+    tbody.innerHTML = list.map(s => {
+      const action = (s.action || "").toLowerCase();
+      const ps = (s.position_side || "").toUpperCase();
+      const note = escapeHtml(s.note || "");
+      const psClass = ps === "LONG" ? "gq-pill--long" : (ps === "SHORT" ? "gq-pill--short" : "gq-pill--neutral");
+      return `<tr>
+        <td class="text-mono">${escapeHtml(fmtTime(s.created_at))}</td>
+        <td>${escapeHtml(s.leader_id || s.portfolio_id || "—")}</td>
+        <td><strong>${escapeHtml(s.symbol || "—")}</strong></td>
+        <td><span class="gq-pill gq-pill--${action || "neutral"}">${escapeHtml(action || "—")}</span></td>
+        <td><span class="gq-pill ${psClass}">${escapeHtml(ps || "BOTH")}</span></td>
+        <td class="text-mono">${(s.executed_qty || s.follower_qty || 0).toFixed(4)}</td>
+        <td class="text-mono">${(s.avg_price || 0).toFixed(2)}</td>
+        <td>${escapeHtml(s.status || "—")}</td>
+        <td class="text-muted gq-text-xs"><span class="text-ellipsis" title="${note}">${note || "—"}</span></td>
+      </tr>`;
+    }).join("");
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="9" class="gq-empty">加载失败:${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+document.getElementById("signalForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const fd = new FormData(form);
+  const body = {};
+  for (const [k, v] of fd.entries()) {
+    if (v === "" || v == null) continue;
+    if (["executed_qty", "avg_price", "follower_leverage"].includes(k)) {
+      body[k] = parseFloat(v);
+    } else {
+      body[k] = v;
+    }
+  }
+  const status = document.getElementById("signalStatus");
+  status.textContent = "提交中…";
+  try {
+    const r = await api("/admin/signals", { method: "POST", body: JSON.stringify(body) });
+    status.textContent = `已注入 event_id=${r.event_id}`;
+    toast(`信号已注入: ${r.symbol} ${r.action} ${r.executed_qty} @ ${r.avg_price}`);
+    form.reset();
+    loadSignals();
+  } catch (e) {
+    status.textContent = "";
+    toast("注入失败:" + e.message, "error");
+  }
+});
+document.getElementById("signalRefresh").addEventListener("click", loadSignals);
+
+// ---------- users ----------
+async function loadUsers() {
+  const tbody = document.getElementById("usersBody");
+  try {
+    const list = await api("/admin/users");
+    document.getElementById("usersCount").textContent = `共 ${list.length} 个账号`;
+    if (!list.length) {
+      tbody.innerHTML = '<tr><td colspan="10" class="gq-empty">暂无数据</td></tr>';
+      return;
+    }
+    tbody.innerHTML = list.map(u => {
+      const isAdmin = (u.authority || 1) >= 9;
+      const isDeleted = !!u.deleted;
+      const inviterCell = u.invitedByEmail
+        ? `<span title="邀请码 ${escapeHtml(u.invitedByCode || "")}">${escapeHtml(u.invitedByEmail)}</span>`
+        : '<span class="text-muted">—</span>';
+      const verifyCell = isDeleted
+        ? '<span class="text-muted">—</span>'
+        : (u.emailVerified
+            ? '<span class="gq-pill gq-pill--up">已验证</span>'
+            : '<span class="gq-pill gq-pill--warn">未验证</span>');
+      const emailCell = isDeleted
+        ? `<strong class="strike">${escapeHtml(u.email || "—")}</strong> <span class="gq-pill gq-pill--del">已注销</span>`
+        : `<strong>${escapeHtml(u.email || "—")}</strong>`;
+      const authCell = isAdmin
+        ? '<span class="gq-admin-badge">管理员</span>'
+        : '<span class="gq-pill gq-pill--neutral">用户</span>';
+      return `<tr>
+        <td>${emailCell}</td>
+        <td>${escapeHtml(u.userName || "—")}</td>
+        <td class="text-mono">${escapeHtml(u.invitationCode || "—")}</td>
+        <td class="gq-text-sm">${inviterCell}</td>
+        <td class="text-mono" style="text-align:center;">${u.inviteeCount || 0}</td>
+        <td class="text-mono">${escapeHtml(fmtMoney(u.balance))}</td>
+        <td style="text-align:center;">${u.businessActive}/${u.businessTotal}</td>
+        <td>${verifyCell}</td>
+        <td>${authCell}</td>
+        <td>
+          ${isDeleted ? '' : `<button class="gq-btn gq-btn--ghost gq-btn--sm" data-act="balance" data-id="${escapeHtml(u.id)}" data-email="${escapeHtml(u.email)}">调整余额</button>
+          <button class="gq-btn gq-btn--ghost gq-btn--sm" data-act="auth" data-id="${escapeHtml(u.id)}" data-cur="${u.authority}">${isAdmin ? "降为用户" : "升为管理员"}</button>`}
+        </td>
+      </tr>`;
+    }).join("");
+    tbody.querySelectorAll("button[data-act='balance']").forEach(b => b.addEventListener("click", () => promptBalance(b.dataset.id, b.dataset.email)));
+    tbody.querySelectorAll("button[data-act='auth']").forEach(b => b.addEventListener("click", () => toggleAuthority(b.dataset.id, parseInt(b.dataset.cur, 10))));
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="10" class="gq-empty">加载失败:${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+async function promptBalance(userId, email) {
+  const v = window.prompt(`为 ${email} 调整余额(USDT,正数充值/负数扣款):`, "10");
+  if (v == null) return;
+  const amount = parseFloat(v);
+  if (!Number.isFinite(amount) || amount === 0) { toast("金额无效", "error"); return; }
+  const reason = window.prompt("调整原因(可选):", "活动赠送") || "manual";
+  try {
+    const r = await api(`/admin/users/${userId}/adjust-balance`, {
+      method: "POST",
+      body: JSON.stringify({ amount, reason })
+    });
+    toast(`余额已更新为 ${fmtMoney(r.newBalance)}`);
+    loadUsers();
+  } catch (e) {
+    toast("调整失败:" + e.message, "error");
+  }
+}
+
+async function toggleAuthority(userId, current) {
+  const next = current >= 9 ? 1 : 9;
+  if (!window.confirm(next >= 9 ? "确定将该用户升级为管理员?" : "确定将该用户降级为普通用户?")) return;
+  try {
+    await api(`/admin/users/${userId}/authority`, {
+      method: "POST",
+      body: JSON.stringify({ authority: next })
+    });
+    toast(next >= 9 ? "已升级为管理员" : "已降级为用户");
+    loadUsers();
+  } catch (e) {
+    toast("修改失败:" + e.message, "error");
+  }
+}
+
+document.getElementById("userRefresh").addEventListener("click", loadUsers);
+
+// ---------- businesses ----------
+async function loadBusinesses() {
+  const tbody = document.getElementById("bizBody");
+  try {
+    const list = await api("/admin/businesses");
+    document.getElementById("bizCount").textContent = `共 ${list.length} 条`;
+    if (!list.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="gq-empty">暂无数据</td></tr>';
+      return;
+    }
+    const now = Date.now();
+    tbody.innerHTML = list.map(b => {
+      const expired = (b.expirationTimestamp || 0) < now;
+      const archived = b.visibled === false;
+      const tag = archived ? '<span class="gq-pill gq-pill--del">已归档</span>' : (expired ? '<span class="gq-pill gq-pill--warn">已过期</span>' : '<span class="gq-pill gq-pill--up">有效</span>');
+      const typeLabel = b.type === 1 ? "下单名额" : "跟单名额";
+      return `<tr>
+        <td class="gq-text-xs">${escapeHtml(b.userEmail || b.userId || "—")}</td>
+        <td>${escapeHtml(b.alias || "—")}</td>
+        <td>${typeLabel}</td>
+        <td class="text-mono">${escapeHtml(fmtTime(b.createTimestamp))}</td>
+        <td class="text-mono">${escapeHtml(fmtTime(b.expirationTimestamp))}</td>
+        <td>${escapeHtml(b.bindingExchange || "—")}</td>
+        <td class="text-mono gq-text-xs">${escapeHtml(b.tradeAccountId || "—")}</td>
+        <td>${tag}</td>
+      </tr>`;
+    }).join("");
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="8" class="gq-empty">加载失败:${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+document.getElementById("bizRefresh").addEventListener("click", loadBusinesses);
+
+// ---------- telegram config ----------
+function _setMaskedField(id, value, fieldName) {
+  const el = document.getElementById(id);
+  el.value = "";
+  el.placeholder = value
+    ? `已配置 (${value}) · 留空保持不变`
+    : `未配置 · 输入完整 ${fieldName}`;
+}
+
+async function loadTelegramConfig() {
+  try {
+    const cfg = await api("/admin/telegram/config");
+    document.getElementById("tgEnabled").checked = !!cfg.enabled;
+    document.getElementById("tgLanguage").value = cfg.language || "zh";
+    document.getElementById("tgBatchWindow").value = cfg.batchWindowSec ?? 3;
+    document.getElementById("tgConsoleBase").value = cfg.consoleBaseUrl || "";
+
+    _setMaskedField("tgBotToken", cfg.botToken, "bot token");
+    _setMaskedField("tgDingtalk", cfg.dingtalkWebhook, "钉钉 webhook URL");
+    _setMaskedField("tgFeishu",   cfg.feishuWebhook,   "飞书 webhook URL");
+    _setMaskedField("tgDiscord",  cfg.discordWebhook,  "Discord webhook URL");
+
+    document.getElementById("tgChatIds").value = (cfg.chatIds || []).join("\n");
+    document.getElementById("tgNotifyAdmin").checked = cfg.notifyAdminSignals !== false;
+    document.getElementById("tgNotifyAuto").checked  = cfg.notifyAutoSignals  !== false;
+    document.getElementById("tgIncludePnl").checked  = cfg.includePnl         !== false;
+  } catch (e) {
+    toast("加载通道配置失败:" + e.message, "error");
+  }
+}
+
+document.getElementById("tgForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const status = document.getElementById("tgStatus");
+  status.textContent = "保存中…";
+  const chatIds = document.getElementById("tgChatIds").value
+    .split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  const body = {
+    enabled: document.getElementById("tgEnabled").checked,
+    language: document.getElementById("tgLanguage").value,
+    batchWindowSec: parseInt(document.getElementById("tgBatchWindow").value || "0", 10),
+    consoleBaseUrl: document.getElementById("tgConsoleBase").value.trim(),
+    chatIds,
+    notifyAdminSignals: document.getElementById("tgNotifyAdmin").checked,
+    notifyAutoSignals:  document.getElementById("tgNotifyAuto").checked,
+    includePnl:         document.getElementById("tgIncludePnl").checked,
+  };
+  const tok = document.getElementById("tgBotToken").value.trim();
+  if (tok) body.botToken = tok;
+  const ding = document.getElementById("tgDingtalk").value.trim();
+  if (ding) body.dingtalkWebhook = ding;
+  const feishu = document.getElementById("tgFeishu").value.trim();
+  if (feishu) body.feishuWebhook = feishu;
+  const dc = document.getElementById("tgDiscord").value.trim();
+  if (dc) body.discordWebhook = dc;
+  try {
+    const cfg = await api("/admin/telegram/config", { method: "POST", body: JSON.stringify(body) });
+    status.textContent = "已保存";
+    toast("通道配置已保存");
+    _setMaskedField("tgBotToken", cfg.botToken, "bot token");
+    _setMaskedField("tgDingtalk", cfg.dingtalkWebhook, "钉钉 webhook URL");
+    _setMaskedField("tgFeishu",   cfg.feishuWebhook,   "飞书 webhook URL");
+    _setMaskedField("tgDiscord",  cfg.discordWebhook,  "Discord webhook URL");
+  } catch (e) {
+    status.textContent = "";
+    toast("保存失败:" + e.message, "error");
+  }
+});
+
+async function clearMaskedField(field, label) {
+  if (!confirm(`确定清空 ${label}? 之后该通道将不再发送消息。`)) return;
+  try {
+    const cfg = await api("/admin/telegram/config", {
+      method: "POST",
+      body: JSON.stringify({ [field]: "" }),
+    });
+    toast(`${label} 已清空`);
+    _setMaskedField("tgBotToken", cfg.botToken, "bot token");
+    _setMaskedField("tgDingtalk", cfg.dingtalkWebhook, "钉钉 webhook URL");
+    _setMaskedField("tgFeishu",   cfg.feishuWebhook,   "飞书 webhook URL");
+    _setMaskedField("tgDiscord",  cfg.discordWebhook,  "Discord webhook URL");
+  } catch (e) {
+    toast("清空失败:" + e.message, "error");
+  }
+}
+window.clearMaskedField = clearMaskedField;
+
+document.getElementById("tgTestBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("tgTestBtn");
+  const status = document.getElementById("tgStatus");
+  btn.disabled = true; status.textContent = "发送中…";
+  try {
+    const r = await api("/admin/telegram/test", { method: "POST", body: JSON.stringify({}) });
+    if (r && r.ok) {
+      const ch = r.channels || {};
+      const summary = Object.entries(ch).map(([k, v]) => `${k}:${v.sent || 0}/${v.failed || 0}`).join(" · ");
+      status.textContent = "已投递 · " + summary;
+      toast("通道测试成功 · " + summary);
+    } else {
+      const ch = (r && r.channels) || {};
+      const summary = Object.entries(ch).map(([k, v]) => `${k}:${v.sent || 0}/${v.failed || 0}`).join(" · ");
+      status.textContent = "失败" + (r?.reason ? ":" + r.reason : "") + (summary ? " · " + summary : "");
+      toast("通道测试失败:" + (r?.reason || summary || "请检查配置"), "error");
+    }
+  } catch (e) {
+    status.textContent = "";
+    toast("测试失败:" + e.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// ---------- live SSE feed for the signals table ----------
+let _adminSSE = null;
+function startAdminSignalStream() {
+  if (_adminSSE && _adminSSE.readyState !== 2) return;
+  const tok = TOK();
+  if (!tok) return;
+  try {
+    _adminSSE = new EventSource("/.well-known/galaxy-sse?token=" + encodeURIComponent(tok));
+    _adminSSE.addEventListener("signal", (e) => {
+      try { loadSignals(); } catch (_) {}
+    });
+    _adminSSE.onerror = () => {
+      if (_adminSSE.readyState === 2) console.warn("admin SSE closed");
+    };
+  } catch (e) {
+    console.warn("admin SSE init failed", e);
+  }
+}
+
+// ---------- Binance bind wizard ----------
+let _bnToken = null;
+let _bnTokenExp = 0;
+let _bnTokenTicker = null;
+let _bnStatusTimer = null;
+
+function bnSetTokenStatus(text, color) {
+  const el = document.getElementById("bnTokenStatus");
+  if (el) {
+    el.textContent = text;
+    el.style.color = color || "var(--gq-text-3)";
+  }
+}
+
+function bnFmtCountdown(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(s / 60), r = s % 60;
+  return `${m}:${String(r).padStart(2, "0")}`;
+}
+
+async function bnGenerateToken() {
+  const btn = document.getElementById("bnGenToken");
+  if (btn) btn.disabled = true;
+  bnSetTokenStatus("生成中…", "var(--gq-text-3)");
+  try {
+    const res = await api("/admin/binance/bind-token", { method: "POST", body: "{}" });
+    _bnToken = res.token;
+    _bnTokenExp = res.expiresAt;
+    document.getElementById("bnSubmitBtn").disabled = false;
+    if (_bnTokenTicker) clearInterval(_bnTokenTicker);
+    const tick = () => {
+      const left = _bnTokenExp - Date.now();
+      if (left <= 0) {
+        bnSetTokenStatus("令牌已过期 — 请重新生成", "var(--gq-down)");
+        document.getElementById("bnSubmitBtn").disabled = true;
+        clearInterval(_bnTokenTicker);
+        _bnTokenTicker = null;
+        _bnToken = null;
+        return;
+      }
+      bnSetTokenStatus(`令牌剩余 ${bnFmtCountdown(left)} — 现在可以粘贴并提交`, "var(--gq-up)");
+    };
+    tick();
+    _bnTokenTicker = setInterval(tick, 1000);
+    toast("令牌已生成,10 分钟内有效");
+  } catch (e) {
+    bnSetTokenStatus("生成失败:" + e.message, "var(--gq-down)");
+    toast("生成令牌失败:" + e.message, "error");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function bnSubmitCredentials(ev) {
+  ev.preventDefault();
+  if (!_bnToken) { toast("请先生成一次性令牌", "error"); return; }
+  const raw = document.getElementById("bnRaw").value.trim();
+  if (!raw) { toast("请先粘贴登录凭证", "error"); return; }
+  const submitBtn = document.getElementById("bnSubmitBtn");
+  const statusEl = document.getElementById("bnSubmitStatus");
+  submitBtn.disabled = true;
+  statusEl.textContent = "提交中…";
+  statusEl.style.color = "var(--gq-text-3)";
+
+  try {
+    const r = await fetch(API + "/binance/cookies", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: _bnToken, raw }),
+    });
+    const text = await r.text();
+    let data; try { data = JSON.parse(text); } catch { data = { message: text }; }
+    if (!r.ok || data.code !== 0) {
+      throw new Error(data.message || ("HTTP " + r.status));
+    }
+    const payload = data.data || {};
+    statusEl.textContent = `已写入 ${payload.cookieCount || 0} 个 Cookie / ${payload.headerCount || 0} 个 Header${payload.connected ? " · 已连接" : ""}`;
+    statusEl.style.color = "var(--gq-up)";
+    toast("提交成功 — Cookie 已写入服务器");
+    document.getElementById("bnRaw").value = "";
+    _bnToken = null;
+    _bnTokenExp = 0;
+    if (_bnTokenTicker) { clearInterval(_bnTokenTicker); _bnTokenTicker = null; }
+    bnSetTokenStatus("令牌已使用 — 如需重新提交请再次生成", "var(--gq-text-3)");
+    submitBtn.disabled = true;
+    setTimeout(loadBinanceStatus, 800);
+  } catch (e) {
+    statusEl.textContent = "提交失败:" + e.message;
+    statusEl.style.color = "var(--gq-down)";
+    toast("提交失败:" + e.message, "error");
+    submitBtn.disabled = false;
+  }
+}
+
+async function bnClearCookies() {
+  if (!confirm("确认要清除服务器上的 Binance Cookie 吗?引擎将立刻失去登录态。")) return;
+  try {
+    await api("/admin/binance/cookies", { method: "DELETE" });
+    toast("Cookie 已清除");
+    setTimeout(loadBinanceStatus, 400);
+  } catch (e) {
+    toast("清除失败:" + e.message, "error");
+  }
+}
+
+function bnFmtUpdated(ts) {
+  if (!ts) return "—";
+  try {
+    const d = new Date(Number(ts));
+    const Y = d.getFullYear(), M = String(d.getMonth() + 1).padStart(2, "0"), D = String(d.getDate()).padStart(2, "0");
+    const h = String(d.getHours()).padStart(2, "0"), m = String(d.getMinutes()).padStart(2, "0");
+    return `${Y}-${M}-${D} ${h}:${m}`;
+  } catch { return "—"; }
+}
+
+async function loadBinanceStatus() {
+  try {
+    const s = await api("/admin/binance/status");
+    const has = !!s.hasCookies;
+    const conn = !!s.connected;
+    const badge = document.getElementById("bnStatusBadge");
+    let color = "var(--gq-text-4)", label = "未配置";
+    if (has && conn) { color = "var(--gq-up)"; label = "已连接"; }
+    else if (has && !conn) { color = "var(--gq-warn)"; label = "已配置 · 未连接"; }
+    if (badge) {
+      badge.innerHTML = `
+        <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:8px;vertical-align:middle;"></span>
+        <span>${label}</span>
+      `;
+    }
+    document.getElementById("bnStatusCount").textContent = String(s.cookieCount || 0);
+    document.getElementById("bnStatusUpdated").textContent = bnFmtUpdated(s.lastUpdated);
+    const headers = s.headerStatus && typeof s.headerStatus === "object" ? s.headerStatus : null;
+    let headerSummary = "—";
+    if (headers) {
+      const present = Object.entries(headers).filter(([, v]) => v).map(([k]) => k);
+      headerSummary = present.length ? `${present.length}/${Object.keys(headers).length} 已就绪` : "缺失";
+    }
+    document.getElementById("bnStatusHeaders").textContent = headerSummary;
+    if (s.lastError) {
+      document.getElementById("bnStatusHeaders").title = "last_error: " + s.lastError;
+    }
+  } catch (e) {
+    console.warn("loadBinanceStatus failed", e);
+  }
+}
+
+function startBinancePolling() {
+  loadBinanceStatus();
+  if (_bnStatusTimer) clearInterval(_bnStatusTimer);
+  _bnStatusTimer = setInterval(loadBinanceStatus, 3000);
+}
+
+document.getElementById("bnGenToken")?.addEventListener("click", bnGenerateToken);
+document.getElementById("bnForm")?.addEventListener("submit", bnSubmitCredentials);
+document.getElementById("bnClearBtn")?.addEventListener("click", bnClearCookies);
+document.getElementById("bnRefreshStatus")?.addEventListener("click", loadBinanceStatus);
+
+function loadAllTabs() {
+  loadSignals();
+  loadUsers();
+  loadBusinesses();
+  loadTelegramConfig();
+  startAdminSignalStream();
+  startBinancePolling();
+}
+
+bootstrap();
+</script>
+
+</body>
+</html>

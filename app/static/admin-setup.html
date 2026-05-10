@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>首次安装 · 设置管理员账号</title>
+  <link rel="stylesheet" href="/static/portal.css?v=20260508-01" />
+  <link rel="icon" href="/favicon.ico" />
+  <style>
+    body.setup-page {
+      min-height: 100vh;
+      display: flex; align-items: flex-start; justify-content: center;
+      position: relative; overflow-x: hidden;
+    }
+    body.setup-page::after {
+      content: ""; position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse 90% 60% at 50% -10%, rgba(43, 216, 112, 0.10), transparent 60%),
+        radial-gradient(ellipse 50% 40% at 88% 50%, rgba(94, 92, 230, 0.08), transparent 60%);
+      pointer-events: none; z-index: 0;
+    }
+    .shell {
+      position: relative; z-index: 1;
+      width: min(560px, 94vw);
+      margin: 60px auto 60px;
+    }
+    .brand-stack {
+      display:flex; flex-direction:column; align-items:center; gap:14px;
+      margin-bottom: 24px;
+    }
+    .brand-badge {
+      width:64px; height:64px; border-radius:50%;
+      background: radial-gradient(circle at 30% 30%, #6cf2a4, #1aa856 65%, #0d6638);
+      color:#04130a; font-family: var(--display); font-weight:700;
+      font-size: 16px; letter-spacing:.12em;
+      display:grid; place-items:center;
+      box-shadow: 0 0 36px rgba(43, 216, 112, 0.4);
+    }
+    .title { font-family: var(--display); font-size: 32px; margin: 0 0 6px; text-align:center; }
+    .subtitle { color: var(--text-2); font-size: 13.5px; line-height: 1.7; text-align: center; margin: 0 4px 22px; }
+    .card {
+      background: var(--bg-2);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 26px 28px;
+    }
+    .section-label {
+      font-size: 12.5px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.08em;
+      margin: 22px 0 10px;
+    }
+    .section-label:first-child { margin-top: 0; }
+    label { display:block; margin-bottom: 12px; font-size: 13px; color: var(--text-2); }
+    label > span { display:block; margin-bottom: 4px; color: var(--text); font-size: 12.5px; }
+    input[type=text], input[type=email], input[type=password] {
+      width: 100%;
+      background: var(--bg-3); border: 1px solid var(--line-2);
+      color: var(--text);
+      padding: 11px 14px;
+      border-radius: 10px;
+      font-size: 14px; outline: none;
+      transition: border-color .18s, box-shadow .18s;
+    }
+    input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(43, 216, 112, 0.18);
+    }
+    .question-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+      padding: 12px;
+      background: rgba(0, 0, 0, 0.18);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      margin-bottom: 10px;
+    }
+    .err {
+      color: #e26060; font-size: 12.5px; min-height: 16px; margin: 4px 2px 14px; display:none;
+    }
+    .err.show { display:block; }
+    .row-actions {
+      display: flex; gap: 10px; justify-content: flex-end;
+      margin-top: 18px;
+    }
+    .btn {
+      padding: 11px 22px; border-radius: 999px;
+      border: 1px solid var(--line-2);
+      background: var(--bg-3);
+      color: var(--text);
+      font-size: 14px; cursor: pointer;
+      transition: all .18s;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-primary {
+      background: var(--accent); color: #04130a; border-color: var(--accent);
+      font-weight: 600;
+    }
+    .btn-primary:hover { background: #38e87a; transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+    .pwd-meter {
+      height: 4px; border-radius: 4px; background: var(--bg-3); margin-top: 6px;
+      overflow: hidden;
+    }
+    .pwd-meter > div {
+      height: 100%; width: 0; background: var(--accent);
+      transition: width .2s, background .2s;
+    }
+    .info-banner {
+      background: rgba(43, 216, 112, 0.08);
+      border: 1px solid rgba(43, 216, 112, 0.3);
+      color: var(--text-2);
+      padding: 10px 14px; border-radius: 8px;
+      font-size: 12.5px; line-height: 1.7;
+      margin-bottom: 18px;
+    }
+    .footer-note {
+      text-align: center;
+      color: var(--text-3);
+      font-size: 12px;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body class="setup-page">
+
+<div class="shell">
+  <div class="brand-stack">
+    <div class="brand-badge">VEGA</div>
+    <div class="brand-wordmark" style="font-family: var(--display); font-size: 18px; letter-spacing: 0.06em; color: var(--text);">GalaxyQuantitative</div>
+  </div>
+
+  <h1 class="title">首次安装</h1>
+  <p class="subtitle">为本平台设置管理员账号、密码,以及 3 道安全问题<br>(后续若忘记密码,只能凭安全问题答案重置)</p>
+
+  <div class="card">
+    <div class="info-banner" id="setupBanner">
+      检测到当前数据库中尚未有完整配置的管理员。请填写以下信息完成首次安装。<br>
+      已存在的种子账号(若有)将被你下面填写的账号<strong>覆盖</strong>。
+    </div>
+
+    <form id="setupForm">
+
+      <div class="section-label">① 管理员账号</div>
+
+      <label>
+        <span>管理员用户名 *</span>
+        <input id="userName" type="text" required maxlength="32" placeholder="例如 cornna" autocomplete="username" />
+      </label>
+
+      <label>
+        <span>邮箱(用于登录与密码恢复)*</span>
+        <input id="email" type="email" required placeholder="admin@yourdomain.com" autocomplete="email" />
+      </label>
+
+      <label>
+        <span>密码 *(至少 6 位,推荐字母+数字+符号)</span>
+        <input id="password" type="password" required minlength="6" autocomplete="new-password" />
+        <div class="pwd-meter"><div id="pwdMeter"></div></div>
+      </label>
+
+      <label>
+        <span>再次输入密码 *</span>
+        <input id="passwordConfirm" type="password" required minlength="6" autocomplete="new-password" />
+      </label>
+
+      <div class="section-label">② 安全问题(共 3 道)</div>
+      <div style="color: var(--text-3); font-size: 12px; margin-bottom: 12px; line-height: 1.6;">
+        请挑选只有你自己知道答案的问题。答案不区分大小写,前后空格自动忽略。<br>
+        <strong style="color: var(--text-2);">这是日后重置管理员密码的<strong>唯一</strong>方式</strong>,请不要忘记。
+      </div>
+
+      <div id="questionsWrap">
+        <div class="question-row">
+          <input class="q-input" type="text" placeholder="问题 1 — 例如:你的出生城市?" required maxlength="80" />
+          <input class="a-input" type="text" placeholder="答案 1" required maxlength="80" />
+        </div>
+        <div class="question-row">
+          <input class="q-input" type="text" placeholder="问题 2 — 例如:第一只宠物的名字?" required maxlength="80" />
+          <input class="a-input" type="text" placeholder="答案 2" required maxlength="80" />
+        </div>
+        <div class="question-row">
+          <input class="q-input" type="text" placeholder="问题 3 — 例如:小学班主任姓什么?" required maxlength="80" />
+          <input class="a-input" type="text" placeholder="答案 3" required maxlength="80" />
+        </div>
+      </div>
+
+      <div id="errMsg" class="err"></div>
+
+      <div class="row-actions">
+        <button type="submit" id="submitBtn" class="btn btn-primary">完成安装并登录</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="footer-note">
+    本页面仅在首次安装时可访问;一旦完成,后续直接打开会跳转至登录页。
+  </div>
+</div>
+
+<script>
+const API = "/api/portal";
+
+async function api(path, body, method = "POST") {
+  const opts = { method, headers: { "Content-Type": "application/json" } };
+  if (body !== undefined && method !== "GET") opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  let data = null;
+  try { data = await r.json(); } catch {}
+  if (!r.ok) {
+    const msg = (data && data.message) || `HTTP ${r.status}`;
+    throw new Error(msg);
+  }
+  if (data && typeof data === "object" && "code" in data) {
+    if (data.code !== 0) throw new Error(data.message || `code ${data.code}`);
+    return data.data;
+  }
+  return data;
+}
+
+function showErr(msg) {
+  const el = document.getElementById("errMsg");
+  el.textContent = msg;
+  el.classList.add("show");
+}
+function clearErr() {
+  const el = document.getElementById("errMsg");
+  el.textContent = "";
+  el.classList.remove("show");
+}
+
+// Password strength meter (simple length+variety heuristic)
+document.getElementById("password").addEventListener("input", e => {
+  const v = e.target.value;
+  let score = 0;
+  if (v.length >= 6) score += 1;
+  if (v.length >= 10) score += 1;
+  if (/[A-Z]/.test(v) && /[a-z]/.test(v)) score += 1;
+  if (/\d/.test(v)) score += 1;
+  if (/[^A-Za-z0-9]/.test(v)) score += 1;
+  const meter = document.getElementById("pwdMeter");
+  const colors = ["#e26060", "#e26060", "#e8a23a", "#3aaee8", "#21c177", "#21c177"];
+  meter.style.width = (score * 20) + "%";
+  meter.style.background = colors[score] || colors[0];
+});
+
+// On load, refuse if setup is already done.
+async function checkSetupStatus() {
+  try {
+    const s = await api("/admin/setup/status", undefined, "GET");
+    if (!s.needsSetup) {
+      document.getElementById("setupBanner").innerHTML =
+        "管理员已配置完成,本页不再可用。3 秒后跳转至登录页…";
+      document.getElementById("setupBanner").style.background = "rgba(226, 96, 96, 0.08)";
+      document.getElementById("setupBanner").style.borderColor = "rgba(226, 96, 96, 0.3)";
+      document.getElementById("setupForm").style.display = "none";
+      setTimeout(() => location.href = "/login", 3000);
+    }
+  } catch (e) {
+    showErr("无法连接到后端:" + e.message);
+  }
+}
+
+document.getElementById("setupForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  clearErr();
+
+  const userName = document.getElementById("userName").value.trim();
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  const passwordConfirm = document.getElementById("passwordConfirm").value;
+
+  if (password !== passwordConfirm) {
+    showErr("两次输入的密码不一致");
+    return;
+  }
+  if (password.length < 6) {
+    showErr("密码至少 6 位");
+    return;
+  }
+
+  const qs = [...document.querySelectorAll(".q-input")].map(x => x.value.trim());
+  const as = [...document.querySelectorAll(".a-input")].map(x => x.value.trim());
+  if (qs.length < 3 || qs.some(q => !q) || as.some(a => !a)) {
+    showErr("请填写完整的 3 道安全问题及答案");
+    return;
+  }
+  // Reject duplicate questions (defensive)
+  const lowerQs = qs.map(q => q.toLowerCase());
+  if (new Set(lowerQs).size !== lowerQs.length) {
+    showErr("3 道安全问题不能重复");
+    return;
+  }
+
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true; btn.textContent = "提交中…";
+
+  try {
+    const res = await api("/admin/setup/init", {
+      userName,
+      email,
+      password,
+      questions: qs.map((q, i) => ({ question: q, answer: as[i] })),
+    });
+    if (res && res.token) {
+      localStorage.setItem("appToken", res.token);
+    }
+    btn.textContent = "完成 — 正在登录…";
+    setTimeout(() => location.href = "/admin", 800);
+  } catch (err) {
+    showErr("提交失败:" + err.message);
+    btn.disabled = false;
+    btn.textContent = "完成安装并登录";
+  }
+});
+
+checkSetupStatus();
+</script>
+
+</body>
+</html>

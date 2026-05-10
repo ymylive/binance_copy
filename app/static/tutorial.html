@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>使用教程 · 银河量化</title>
+  <link rel="stylesheet" href="/static/portal.css?v=20260501-01" />
+  <link rel="icon" href="/favicon.ico" />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    body.tutorial { position: relative; }
+    body.tutorial::before {
+      content: "";
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,.55), transparent 50%),
+        radial-gradient(1px 1px at 28% 64%, rgba(255,255,255,.40), transparent 50%),
+        radial-gradient(1px 1px at 46% 32%, rgba(255,255,255,.45), transparent 50%),
+        radial-gradient(1px 1px at 62% 78%, rgba(255,255,255,.35), transparent 50%),
+        radial-gradient(1px 1px at 80% 22%, rgba(255,255,255,.50), transparent 50%),
+        radial-gradient(1px 1px at 88% 60%, rgba(255,255,255,.40), transparent 50%);
+      background-size: 720px 720px;
+      pointer-events: none; opacity: .45; z-index: 0;
+    }
+
+    .tutorial-shell {
+      position: relative; z-index: 1;
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px 24px 80px;
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 32px;
+    }
+    @media (max-width: 980px) {
+      .tutorial-shell { grid-template-columns: 1fr; }
+      .toc-wrap { position: relative; top: 0; max-height: none; }
+      .toc-toggle { display: inline-flex; }
+    }
+
+    /* Sidebar */
+    .toc-wrap {
+      position: sticky;
+      top: calc(var(--topbar-h) + 20px);
+      align-self: start;
+      max-height: calc(100vh - var(--topbar-h) - 60px);
+      overflow-y: auto;
+      padding-right: 6px;
+    }
+    .toc-toggle {
+      display: none;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: var(--bg-3);
+      border: 1px solid var(--line-2);
+      color: var(--text);
+      font-size: 13px;
+      cursor: pointer;
+      margin-bottom: 12px;
+    }
+    .toc-group { margin-bottom: 6px; }
+    .toc-group-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      color: var(--text-2);
+      font-size: 13px;
+      transition: background .15s, color .15s;
+    }
+    .toc-group-head:hover { background: rgba(255,255,255,.04); color: var(--text); }
+    .toc-group.open .toc-group-head { color: var(--text); }
+    .toc-group-head .chev {
+      width: 12px; height: 12px; opacity: 0.7;
+      transition: transform .2s;
+    }
+    .toc-group.open .toc-group-head .chev { transform: rotate(90deg); }
+    .toc-items {
+      max-height: 0; overflow: hidden;
+      transition: max-height .25s ease;
+      padding-left: 6px;
+    }
+    .toc-group.open .toc-items { max-height: 400px; }
+    .toc-items a {
+      display: block;
+      padding: 8px 16px;
+      margin: 2px 0;
+      border-radius: 8px;
+      color: var(--text-3);
+      font-size: 13px;
+      text-decoration: none;
+      transition: all .15s;
+    }
+    .toc-items a:hover { color: var(--text); background: rgba(255,255,255,.03); }
+    .toc-items a.active { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+
+    /* Content */
+    .content-card {
+      background: linear-gradient(180deg, rgba(20,23,31,0.78), rgba(11,13,18,0.78));
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 40px 48px;
+      box-shadow: 0 18px 60px rgba(0,0,0,.35);
+      min-height: 600px;
+    }
+    @media (max-width: 760px) { .content-card { padding: 28px 24px; } }
+
+    .content {
+      color: var(--text);
+      font-size: 14.5px;
+      line-height: 1.85;
+    }
+    .content h2 {
+      font-family: var(--display);
+      font-size: 26px;
+      margin: 36px 0 18px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      letter-spacing: 0.02em;
+      scroll-margin-top: 90px;
+    }
+    .content h2:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+    .content h3 {
+      font-family: var(--display);
+      font-size: 18px;
+      margin: 26px 0 12px;
+      letter-spacing: 0.02em;
+    }
+    .content p { margin: 10px 0; color: var(--text); }
+    .content strong { color: var(--accent); font-weight: 600; }
+    .content em { color: var(--text-2); font-style: italic; }
+    .content code {
+      background: rgba(255,255,255,.06);
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-size: 12.5px;
+      color: var(--accent);
+    }
+    .content ul, .content ol {
+      padding-left: 0;
+      counter-reset: step;
+      list-style: none;
+    }
+    .content ul li, .content ol li {
+      position: relative;
+      padding-left: 38px;
+      margin: 12px 0;
+      line-height: 1.85;
+    }
+    .content ol > li::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      left: 0; top: 0;
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #04130a;
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 13px;
+      display: grid; place-items: center;
+    }
+    .content ul > li::before {
+      content: "";
+      position: absolute;
+      left: 14px; top: 12px;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    .content img {
+      max-width: 100%;
+      border-radius: 10px;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+    }
+    .content img[alt]:not([src]):after,
+    .content img:not([src]):after { display: none; }
+
+    /* 📌 tip blocks */
+    .content blockquote, .content .tip {
+      border-left: 3px solid var(--warn);
+      background: rgba(245, 176, 65, 0.08);
+      padding: 14px 18px;
+      border-radius: 10px;
+      margin: 16px 0;
+      color: var(--text-2);
+    }
+    .content hr {
+      border: none;
+      height: 1px;
+      background: var(--line);
+      margin: 36px 0;
+    }
+    .content a { color: var(--link); text-decoration: underline; text-underline-offset: 3px; }
+  </style>
+</head>
+<body class="tutorial">
+
+<header class="topbar">
+  <a class="brand" href="/"><div class="brand-mark">VEGA</div><span class="brand-name">银河量化</span></a>
+  <nav class="topnav">
+    <a href="/">首页</a>
+    <a href="/referral">推广返佣</a>
+    <a href="/mall">商城</a>
+    <a href="/wallet">钱包</a>
+    <a href="/profile">个人中心</a>
+    <a class="active" href="/tutorial">使用教程</a>
+    <a class="cta" href="/kzt">控制台</a>
+  </nav>
+  <div class="top-actions">
+    <a class="login-btn" href="/login">Login</a>
+  </div>
+</header>
+
+<div class="tutorial-shell">
+  <aside class="toc-wrap">
+    <button class="toc-toggle" id="tocToggle">≡ 目录</button>
+    <nav id="toc"></nav>
+  </aside>
+
+  <main class="content-card">
+    <div class="content" id="content">加载中…</div>
+  </main>
+</div>
+
+<script>
+const API = "/api/portal";
+const contentEl = document.getElementById("content");
+const tocEl = document.getElementById("toc");
+
+async function loadTutorial() {
+  try {
+    const r = await fetch(API + "/home/tutorial");
+    const j = await r.json();
+    let md = (j && j.data) || "# 暂无内容";
+    // Convert 📌 lines into blockquote-style tip blocks
+    md = md.replace(/^📌\s*(.*)$/gm, "> 📌 $1");
+    // Pre-process: headings starting with `### 方式` etc are fine.
+    contentEl.innerHTML = marked.parse(md);
+    // Rewrite tutorial image paths
+    contentEl.querySelectorAll("img").forEach(img => {
+      const src = img.getAttribute("src") || "";
+      if (src.startsWith("tutorial/")) {
+        img.src = "/static/tutorial-images/" + src.replace(/^tutorial\//, "");
+      }
+      img.addEventListener("error", () => { img.style.display = "none"; });
+    });
+    buildToc();
+    setupScrollSpy();
+  } catch (e) {
+    contentEl.innerHTML = "<p style='color: var(--danger)'>教程加载失败,请稍后重试。</p>";
+  }
+}
+
+function buildToc() {
+  const headings = contentEl.querySelectorAll("h2");
+  const groups = {};
+  headings.forEach((h, i) => {
+    const text = (h.textContent || "").trim();
+    const id = "h-" + i;
+    h.id = id;
+    // Heuristic group: anything with 币安 / OKX / Gate / Bitget / 银河跟单
+    let groupKey = "其他";
+    if (/币安/.test(text)) groupKey = "币安";
+    else if (/OKX|欧易/.test(text)) groupKey = "欧易 OKX";
+    else if (/Gate/i.test(text)) groupKey = "Gate.io";
+    else if (/Bitget/i.test(text)) groupKey = "Bitget";
+    else if (/银河|跟单/.test(text)) groupKey = "使用银河量化跟单";
+    groups[groupKey] = groups[groupKey] || [];
+    groups[groupKey].push({ id, text });
+  });
+  tocEl.innerHTML = Object.entries(groups).map(([k, items]) => `
+    <div class="toc-group ${items.length ? 'open' : ''}">
+      <div class="toc-group-head">
+        <span>${k}</span>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>
+      <div class="toc-items">
+        ${items.map(it => `<a href="#${it.id}" data-id="${it.id}">${it.text}</a>`).join("")}
+      </div>
+    </div>
+  `).join("");
+  // Group toggle
+  tocEl.querySelectorAll(".toc-group-head").forEach(h => {
+    h.addEventListener("click", () => h.parentElement.classList.toggle("open"));
+  });
+  // Smooth scroll
+  tocEl.querySelectorAll("a").forEach(a => {
+    a.addEventListener("click", (e) => {
+      e.preventDefault();
+      const el = document.getElementById(a.dataset.id);
+      if (el) {
+        const top = el.getBoundingClientRect().top + window.scrollY - 80;
+        window.scrollTo({ top, behavior: "smooth" });
+      }
+    });
+  });
+}
+
+function setupScrollSpy() {
+  const headings = [...contentEl.querySelectorAll("h2")];
+  if (!("IntersectionObserver" in window) || !headings.length) return;
+  const links = new Map();
+  tocEl.querySelectorAll("a").forEach(a => links.set(a.dataset.id, a));
+  let activeId = null;
+  const setActive = (id) => {
+    if (activeId === id) return;
+    activeId = id;
+    tocEl.querySelectorAll("a").forEach(x => x.classList.remove("active"));
+    const link = links.get(id);
+    if (link) link.classList.add("active");
+  };
+  const obs = new IntersectionObserver((entries) => {
+    const visible = entries.filter(e => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+    if (visible.length) setActive(visible[0].target.id);
+  }, { rootMargin: "-90px 0px -65% 0px", threshold: 0 });
+  headings.forEach(h => obs.observe(h));
+}
+
+// Mobile toc toggle
+document.getElementById("tocToggle").addEventListener("click", () => {
+  document.querySelector(".toc-wrap").classList.toggle("mobile-open");
+});
+
+loadTutorial();
+</script>
+
+</body>
+</html>

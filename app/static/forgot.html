@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>找回密码 · 银河量化</title>
+  <link rel="stylesheet" href="/static/portal.css?v=20260501-01" />
+  <link rel="icon" href="/favicon.ico" />
+  <style>
+    body.forgot-page {
+      min-height: 100vh;
+      display: flex; align-items: flex-start; justify-content: center;
+      position: relative; overflow-x: hidden;
+    }
+    body.forgot-page::before {
+      content: ""; position: fixed; inset: 0;
+      background:
+        radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,.55), transparent 50%),
+        radial-gradient(1px 1px at 28% 64%, rgba(255,255,255,.40), transparent 50%),
+        radial-gradient(1px 1px at 46% 32%, rgba(255,255,255,.45), transparent 50%),
+        radial-gradient(1px 1px at 62% 78%, rgba(255,255,255,.35), transparent 50%),
+        radial-gradient(1px 1px at 80% 22%, rgba(255,255,255,.50), transparent 50%),
+        radial-gradient(1px 1px at 88% 60%, rgba(255,255,255,.40), transparent 50%);
+      background-size: 700px 700px;
+      pointer-events: none; opacity: .55; z-index: 0;
+    }
+    body.forgot-page::after {
+      content: ""; position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse 90% 60% at 50% -10%, rgba(43, 216, 112, 0.10), transparent 60%),
+        radial-gradient(ellipse 50% 40% at 88% 50%, rgba(94, 92, 230, 0.08), transparent 60%);
+      pointer-events: none; z-index: 0;
+    }
+
+    .shell {
+      position: relative; z-index: 1;
+      width: min(440px, 92vw);
+      margin: 80px auto 60px;
+      text-align: center;
+    }
+    .brand-stack {
+      display: flex; flex-direction: column; align-items: center; gap: 14px;
+      margin-bottom: 32px;
+    }
+    .brand-badge {
+      width: 72px; height: 72px; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #6cf2a4, #1aa856 65%, #0d6638);
+      color: #04130a;
+      font-family: var(--display); font-weight: 700;
+      font-size: 18px; letter-spacing: 0.12em;
+      display: grid; place-items: center;
+      box-shadow: 0 0 36px rgba(43, 216, 112, 0.4);
+    }
+    .brand-wordmark {
+      font-family: var(--display); font-size: 22px; letter-spacing: 0.06em;
+      color: var(--text);
+    }
+    .title {
+      font-family: var(--display); font-size: 44px; letter-spacing: 0.04em;
+      margin: 0 0 14px; color: var(--text);
+    }
+    .sub {
+      color: var(--text-2); font-size: 13.5px; line-height: 1.7;
+      margin: 0 6px 24px;
+    }
+    .field { position: relative; margin-bottom: 14px; }
+    .field input {
+      width: 100%;
+      background: var(--bg-3); border: 1px solid var(--line-2);
+      color: var(--text);
+      padding: 14px 16px 14px 46px;
+      border-radius: 12px;
+      font-size: 14px; font-family: var(--sans); outline: none;
+      transition: border-color .18s, box-shadow .18s;
+    }
+    .field input::placeholder { color: var(--text-3); }
+    .field input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(43, 216, 112, 0.18);
+    }
+    .field svg.icon {
+      position: absolute; left: 16px; top: 50%;
+      transform: translateY(-50%);
+      width: 18px; height: 18px;
+      color: var(--text-3); pointer-events: none;
+    }
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .field-row .field { margin-bottom: 0; }
+    .send-code-btn {
+      padding: 0 18px;
+      border-radius: 12px;
+      background: var(--bg-3);
+      border: 1px solid var(--line-2);
+      color: var(--text);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all .18s;
+      white-space: nowrap;
+      min-width: 110px;
+    }
+    .send-code-btn:hover:not(:disabled) {
+      background: var(--bg-2); border-color: var(--accent); color: var(--accent);
+    }
+    .send-code-btn:disabled {
+      opacity: 0.55; cursor: not-allowed;
+    }
+
+    .error-msg, .success-msg {
+      font-size: 12.5px; text-align: left;
+      margin: -6px 4px 14px;
+      min-height: 16px;
+      display: none;
+    }
+    .error-msg { color: var(--danger); }
+    .success-msg { color: var(--accent); }
+    .error-msg.show, .success-msg.show { display: block; }
+
+    .btn-row {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 12px; margin-top: 8px;
+    }
+    .btn-back {
+      padding: 14px 18px; border-radius: 999px;
+      background: var(--bg-3); border: 1px solid var(--line-2);
+      color: var(--text); font-size: 14px; cursor: pointer;
+      transition: all .18s;
+    }
+    .btn-back:hover { background: var(--bg-2); border-color: var(--accent); color: var(--accent); }
+    .btn-submit {
+      display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+      padding: 14px 18px; border-radius: 999px;
+      background: var(--accent); color: #04130a;
+      font-weight: 600; font-size: 14px;
+      border: none; cursor: pointer;
+      transition: background .18s, transform .18s;
+    }
+    .btn-submit:hover { background: #38e87a; transform: translateY(-1px); }
+    .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+    .links-row {
+      display: flex; justify-content: space-between;
+      margin-top: 18px;
+      font-size: 12.5px; color: var(--text-3);
+    }
+    .links-row a { color: var(--text-3); transition: color .18s; }
+    .links-row a:hover { color: var(--accent); }
+
+    .home-corner {
+      position: fixed; top: 22px; left: 28px;
+      display: flex; align-items: center; gap: 10px;
+      color: var(--text-2); font-size: 13px;
+      z-index: 2; opacity: 0.7; transition: opacity .18s;
+    }
+    .home-corner:hover { opacity: 1; color: var(--accent); }
+    .home-corner .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #6cf2a4, #1aa856);
+      box-shadow: 0 0 8px rgba(43,216,112,.6);
+    }
+
+    @media (max-width: 480px) {
+      .btn-row { grid-template-columns: 1fr; }
+      .title { font-size: 34px; }
+    }
+  </style>
+</head>
+<body class="forgot-page">
+
+<a class="home-corner" href="/"><span class="dot"></span><span>返回主页</span></a>
+
+<div class="shell">
+  <div class="brand-stack">
+    <div class="brand-badge">VEGA</div>
+    <div class="brand-wordmark">GalaxyQuantitative</div>
+  </div>
+
+  <h1 class="title">找回密码</h1>
+  <p class="sub">输入注册邮箱,我们会通过验证码协助你重置密码。<br/>开发环境下,验证码会写入服务器 <code>runtime/portal/pending_codes.json</code>。</p>
+
+  <form id="forgotForm" novalidate autocomplete="off">
+    <div class="field">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="5" width="18" height="14" rx="2"/>
+        <path d="M3 7l9 6 9-6"/>
+      </svg>
+      <input id="emailInput" name="email" type="email" placeholder="注册邮箱" required autocomplete="email" />
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="6" width="16" height="12" rx="2"/>
+          <path d="M8 12h2M12 12h2M16 12h0"/>
+        </svg>
+        <input id="codeInput" name="code" type="text" inputmode="numeric" maxlength="6" placeholder="6 位验证码" required />
+      </div>
+      <button type="button" class="send-code-btn" id="sendCodeBtn">发送验证码</button>
+    </div>
+
+    <div class="field">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="10" width="16" height="11" rx="2"/>
+        <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+      </svg>
+      <input id="newPwdInput" name="newPassword" type="password" placeholder="设置新密码 (至少 6 位)" required autocomplete="new-password" />
+    </div>
+
+    <div class="field">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 12l2 2 4-4"/>
+        <rect x="4" y="10" width="16" height="11" rx="2"/>
+        <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+      </svg>
+      <input id="newPwd2Input" name="newPassword2" type="password" placeholder="再次输入新密码" required autocomplete="new-password" />
+    </div>
+
+    <div class="error-msg" id="errMsg"></div>
+    <div class="success-msg" id="okMsg"></div>
+
+    <div class="btn-row">
+      <button type="button" class="btn-back" id="backBtn">返回登录</button>
+      <button type="submit" class="btn-submit" id="submitBtn">
+        <span>重置密码</span>
+      </button>
+    </div>
+
+    <div class="links-row">
+      <a href="/register">没有账号 · 注册</a>
+      <a href="/login">直接登录</a>
+    </div>
+  </form>
+</div>
+
+<script>
+  const emailEl = document.getElementById("emailInput");
+  const codeEl = document.getElementById("codeInput");
+  const newPwdEl = document.getElementById("newPwdInput");
+  const newPwd2El = document.getElementById("newPwd2Input");
+  const errEl = document.getElementById("errMsg");
+  const okEl = document.getElementById("okMsg");
+  const sendBtn = document.getElementById("sendCodeBtn");
+  const submitBtn = document.getElementById("submitBtn");
+
+  function setError(m) {
+    errEl.textContent = m || "";
+    errEl.classList.toggle("show", !!m);
+    okEl.classList.remove("show");
+  }
+  function setOk(m) {
+    okEl.textContent = m || "";
+    okEl.classList.toggle("show", !!m);
+    errEl.classList.remove("show");
+  }
+
+  document.getElementById("backBtn").addEventListener("click", () => location.href = "/login");
+
+  // Cooldown countdown for the send-code button (60s).
+  let cooldownTimer = null;
+  function startCooldown(s) {
+    sendBtn.disabled = true;
+    let left = s;
+    sendBtn.textContent = `${left} 秒后可重发`;
+    cooldownTimer = setInterval(() => {
+      left -= 1;
+      if (left <= 0) {
+        clearInterval(cooldownTimer); cooldownTimer = null;
+        sendBtn.disabled = false;
+        sendBtn.textContent = "发送验证码";
+      } else {
+        sendBtn.textContent = `${left} 秒后可重发`;
+      }
+    }, 1000);
+  }
+
+  sendBtn.addEventListener("click", async () => {
+    const email = emailEl.value.trim();
+    if (!email || !email.includes("@")) {
+      setError("请先输入有效邮箱地址");
+      emailEl.focus();
+      return;
+    }
+    setError("");
+    sendBtn.disabled = true;
+    sendBtn.textContent = "发送中...";
+    try {
+      const r = await fetch("/api/portal/auth/forgot-password/send-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await r.json().catch(() => null);
+      const fail = data && "code" in data && data.code !== 0;
+      if (!r.ok || fail) {
+        setError((data && data.message) || `发送失败 (${r.status})`);
+        sendBtn.disabled = false;
+        sendBtn.textContent = "发送验证码";
+        return;
+      }
+      setOk("验证码已发送 · 开发环境下请到服务器 runtime/portal/pending_codes.json 查看");
+      startCooldown(60);
+    } catch (e) {
+      setError("网络异常,请稍后重试");
+      sendBtn.disabled = false;
+      sendBtn.textContent = "发送验证码";
+    }
+  });
+
+  document.getElementById("forgotForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    setError(""); setOk("");
+    const email = emailEl.value.trim();
+    const code = codeEl.value.trim();
+    const newPassword = newPwdEl.value;
+    const newPassword2 = newPwd2El.value;
+
+    if (!email || !email.includes("@")) { setError("请输入有效邮箱"); return; }
+    if (!code || code.length < 4) { setError("请输入验证码"); return; }
+    if (!newPassword || newPassword.length < 6) { setError("新密码至少 6 位"); return; }
+    if (newPassword !== newPassword2) { setError("两次输入的密码不一致"); return; }
+
+    submitBtn.disabled = true;
+    const span = submitBtn.querySelector("span");
+    const original = span.textContent;
+    span.textContent = "重置中...";
+    try {
+      const r = await fetch("/api/portal/auth/forgot-password/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, code, newPassword }),
+      });
+      const data = await r.json().catch(() => null);
+      const fail = data && "code" in data && data.code !== 0;
+      if (!r.ok || fail) {
+        setError((data && data.message) || `重置失败 (${r.status})`);
+        return;
+      }
+      setOk("密码重置成功,1 秒后跳转到登录页 ...");
+      setTimeout(() => { location.href = "/login"; }, 1000);
+    } catch (e) {
+      setError("网络异常,请稍后重试");
+    } finally {
+      submitBtn.disabled = false;
+      span.textContent = original;
+    }
+  });
+</script>
+
+</body>
+</html>
