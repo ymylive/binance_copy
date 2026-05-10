@@ -1,669 +1,581 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=1440" />
-  <title>Copy Sync · Signal Console v6</title>
+  <title>Copy Sync · 银河量化控制台</title>
+  <link rel="stylesheet" href="galaxy-tokens.css" />
   <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
   <style>
     /* =====================================================================
-       Copy Sync · v5 — Apple system aesthetic.  Anchors: macOS Stocks,
-       Settings, Notes.  No serifs, no rust orange, no chips, no status
-       bar.  Big headlines, generous whitespace, system colors only.
+       Copy Sync · Console
+       银河量化 (Galaxy Quant) light theme — maps the React app's existing
+       class names onto galaxy-tokens.css palette without touching JSX.
+       Source of truth for tokens:  galaxy-tokens.css
+       Brand spec:                  _design/galaxy_live/brand-spec.md
        ===================================================================== */
+
     :root {
-      /* macOS dark system surfaces */
-      --bg:           #000000;
-      --surface-1:    rgba(255,255,255,0.04);
-      --surface-2:    rgba(255,255,255,0.07);
-      --surface-3:    rgba(255,255,255,0.11);
-      --card:         #1C1C1E;
-      --card-2:       #2C2C2E;
+      /* Legacy aliases used by JSX inline style={} expressions. We keep the
+         names so React code keeps working, but we re-point them at the
+         galaxy palette so the page renders mint-light, not Apple-dark. */
+      --bg:           var(--gq-bg);
+      --surface-1:    var(--gq-fill-extra);
+      --surface-2:    var(--gq-fill-light);
+      --surface-3:    var(--gq-fill);
+      --card:         var(--gq-card);
+      --card-2:       var(--gq-card);
 
-      /* system labels (iOS / macOS dark mode spec) */
-      --label:        #FFFFFF;
-      --label-2:      rgba(235,235,245,0.62);
-      --label-3:      rgba(235,235,245,0.30);
-      --label-4:      rgba(235,235,245,0.18);
+      --label:        var(--gq-text);
+      --label-2:      var(--gq-text-2);
+      --label-3:      var(--gq-text-3);
+      --label-4:      var(--gq-text-4);
 
-      /* macOS / iOS system colors (dark mode variants) */
-      --blue:    #0A84FF;
-      --blue-soft: rgba(10,132,255,0.16);
-      --green:   #30D158;
-      --green-soft: rgba(48,209,88,0.16);
-      --red:     #FF453A;
-      --red-soft: rgba(255,69,58,0.16);
-      --orange:  #FF9F0A;
-      --orange-soft: rgba(255,159,10,0.16);
-      --yellow:  #FFD60A;
-      --purple:  #BF5AF2;
-      --pink:    #FF375F;
-      --teal:    #64D2FF;
-      --indigo:  #5E5CE6;
+      /* JSX hardcodes these in style={{color:'var(--green)'}} / etc.
+         Re-map them into galaxy mint / sell-side red / warn orange. */
+      --blue:         var(--gq-mint);
+      --blue-soft:    var(--gq-mint-soft);
+      --green:        var(--gq-up);
+      --green-soft:   var(--gq-up-soft);
+      --red:          var(--gq-down);
+      --red-soft:     var(--gq-down-soft);
+      --orange:       var(--gq-warn);
+      --orange-soft:  var(--gq-warn-soft);
+      --yellow:       var(--gq-warn);
+      --purple:       var(--gq-mint-3);
+      --pink:         var(--gq-down);
+      --teal:         var(--gq-mint-3);
+      --indigo:       var(--gq-mint-2);
 
-      --hairline:        rgba(255,255,255,0.06);
-      --hairline-2:      rgba(255,255,255,0.10);
+      --hairline:     var(--gq-line-3);
+      --hairline-2:   var(--gq-line-2);
 
-      --radius-xs: 6px;
-      --radius-sm: 8px;
-      --radius:    12px;
-      --radius-lg: 16px;
-      --radius-xl: 22px;
+      --radius-xs:    2px;
+      --radius-sm:    4px;
+      --radius:       8px;
+      --radius-lg:    12px;
+      --radius-xl:    14px;
 
-      --sans:    -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
-      --display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif;
-      --mono:    "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+      --sans:         var(--gq-sans);
+      --display:      var(--gq-sans);
+      --mono:         var(--gq-mono);
 
-      --t-fast: 160ms cubic-bezier(0.25, 0.1, 0.25, 1);
-      --t-base: 240ms cubic-bezier(0.25, 0.1, 0.25, 1);
+      --t-fast:       150ms ease;
+      --t-base:       220ms ease;
 
-      --topbar-h: 52px;
-      --side-w:   232px;
-      --rail-w:   360px;
+      --topbar-h:     60px;
+      --side-w:       245px;
+      --rail-w:       360px;
     }
+
     html, body, #root { height: 100%; margin: 0; padding: 0; }
     html {
-      background: var(--bg);
-      color: var(--label);
-      font-family: var(--sans);
-      font-size: 13px;
-      line-height: 1.4;
+      background: var(--gq-bg);
+      color: var(--gq-text);
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-base);
+      line-height: 1.5;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
-      text-rendering: optimizeLegibility;
-      letter-spacing: -0.005em;
     }
     body {
+      background: var(--gq-bg);
       overflow: hidden;
       position: relative;
-      /* Layered radial aurora — slow-moving Apple-Card-style atmosphere.
-         Three coloured ellipses + a subtle vignette make the canvas feel
-         "lit from within" rather than flat black. */
-      background:
-        radial-gradient(ellipse 80% 60% at 12% -8%,  rgba(94,92,230,0.18), transparent 55%),
-        radial-gradient(ellipse 70% 55% at 92% 18%,  rgba(255,69,58,0.10),  transparent 60%),
-        radial-gradient(ellipse 95% 70% at 50% 105%, rgba(10,132,255,0.16), transparent 60%),
-        radial-gradient(ellipse 60% 50% at 70% 60%,  rgba(48,209,88,0.06),  transparent 65%),
-        var(--bg);
     }
-    /* Inline SVG noise grain — high-frequency, very low alpha; layered above
-       the gradient so dark fields don't look like "screen color". */
-    body::before {
-      content: "";
-      position: fixed; inset: 0;
-      pointer-events: none;
-      z-index: 0;
-      opacity: 0.5;
-      mix-blend-mode: overlay;
-      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-    }
-    #root { position: relative; z-index: 1; }
     *, *::before, *::after { box-sizing: border-box; }
     button {
       font: inherit; color: inherit; background: transparent;
       border: none; padding: 0; cursor: pointer;
     }
-    button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+    button:focus-visible { outline: 2px solid var(--gq-mint-3); outline-offset: 2px; }
     input {
       font: inherit; color: inherit; background: transparent;
       border: none; padding: 0; outline: none;
     }
-    input::placeholder { color: var(--label-3); }
-    ::selection { background: rgba(10,132,255,0.4); color: var(--label); }
+    input::placeholder { color: var(--gq-text-4); }
+    ::selection { background: rgba(58,203,190,0.30); color: var(--gq-text); }
     *::-webkit-scrollbar { width: 8px; height: 8px; }
-    *::-webkit-scrollbar-thumb { background: var(--surface-2); border-radius: 4px; }
+    *::-webkit-scrollbar-thumb { background: var(--gq-line-2); border-radius: 4px; }
+    *::-webkit-scrollbar-thumb:hover { background: var(--gq-line); }
     *::-webkit-scrollbar-track { background: transparent; }
 
-    /* ----- shell ----- */
+    code { font-family: var(--gq-mono); font-size: 12px;
+           background: var(--gq-fill-light);
+           padding: 1px 6px; border-radius: 3px; color: var(--gq-text); }
+
+    /* ---------- shell ---------- */
     .app {
       display: grid;
       grid-template-rows: var(--topbar-h) 1fr;
       height: 100vh;
+      background: var(--gq-bg);
     }
 
-    /* ----- topbar — macOS toolbar ----- */
+    /* ---------- topbar ---------- */
     .topbar {
       display: grid;
       grid-template-columns: var(--side-w) 1fr auto;
       align-items: center;
       gap: 16px;
-      padding: 0 18px;
-      border-bottom: 0.5px solid var(--hairline);
-      background: rgba(20,20,22,0.55);
-      backdrop-filter: saturate(180%) blur(40px);
-      -webkit-backdrop-filter: saturate(180%) blur(40px);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 0.5px 0 rgba(0,0,0,0.5);
-      position: relative; z-index: 5;
+      padding: 0 32px 0 16px;
+      background: var(--gq-card);
+      box-shadow: 0 1px 0 var(--gq-line-3);
+      position: relative;
+      z-index: 5;
     }
     .brand {
       display: flex; align-items: center; gap: 10px;
+      padding: 0 8px;
     }
     .brand-mark {
-      width: 24px; height: 24px;
-      background: var(--blue);
-      border-radius: 6px;
+      width: 32px; height: 32px;
+      background: var(--gq-mint);
+      border-radius: 50%;
       display: grid; place-items: center;
-      color: white; font-weight: 600; font-size: 11.5px;
-      letter-spacing: -0.02em;
-      box-shadow: 0 0 0 1px rgba(10,132,255,0.4), 0 1px 0 rgba(255,255,255,0.1) inset;
+      color: #FFFFFF; font-weight: 600; font-size: 12px;
+      letter-spacing: 0.02em;
+      flex-shrink: 0;
     }
     .brand-name {
-      font-family: var(--display);
-      font-weight: 600; font-size: 14px;
-      letter-spacing: -0.015em;
+      font-family: var(--gq-display);
+      font-weight: 600; font-size: 16px;
+      letter-spacing: 0.04em;
+      color: var(--gq-text);
     }
     .brand-sub {
-      font-family: var(--display);
-      font-size: 11px; font-weight: 500;
-      letter-spacing: -0.005em;
-      color: var(--label-3);
-      padding: 2px 7px;
-      border-radius: 5px;
-      background: var(--surface-1);
-      margin-left: 2px;
+      font-family: var(--gq-sans);
+      font-size: 11px; font-weight: 400;
+      letter-spacing: 0.04em;
+      color: var(--gq-text-3);
+      padding: 2px 8px;
+      border-radius: var(--gq-radius-pill);
+      background: var(--gq-fill-light);
+      margin-left: 4px;
     }
-    /* ----- token modal additions ----- */
-    .modal-body.token-body { padding: 22px 24px 8px; }
-    .token-input {
-      width: 100%;
-      padding: 11px 13px;
-      background: var(--surface-1);
-      border: 0.5px solid var(--hairline-2);
-      border-radius: 8px;
-      color: var(--label);
-      font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-      font-size: 13px;
-      letter-spacing: 0.01em;
-      transition: border-color var(--t-fast), background var(--t-fast);
-    }
-    .token-input:focus { outline: none; border-color: var(--blue); background: var(--surface-2); }
-    .modal-foot {
-      display: flex; align-items: center; justify-content: flex-end; gap: 14px;
-      padding: 14px 22px 18px;
-      border-top: 0.5px solid var(--hairline);
-    }
-    .modal-foot .link-btn {
-      font-size: 12.5px; color: var(--label-2);
-      padding: 6px 8px; border-radius: 6px;
-    }
-    .modal-foot .link-btn:hover:not(:disabled) { color: var(--label); background: var(--surface-1); }
-    .modal-foot .link-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .modal-foot .btn-primary { padding: 7px 16px; font-size: 13px; }
-    .modal-foot .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
-    .api-banner {
-      margin: 8px 14px 0;
-      padding: 8px 12px;
-      border-radius: 7px;
-      font-size: 12px; line-height: 1.4;
-      background: rgba(255,69,58,0.12);
-      color: #FF6961;
-      border: 0.5px solid rgba(255,69,58,0.35);
-    }
+
     .topbar-search {
       max-width: 440px;
       display: flex; align-items: center; gap: 9px;
-      padding: 6px 12px;
-      background: var(--surface-1);
-      border-radius: 7px;
-      color: var(--label-2);
-      font-size: 13px;
+      height: 36px;
+      padding: 0 14px;
+      background: var(--gq-fill-light);
+      border-radius: var(--gq-radius-sm);
+      color: var(--gq-text-3);
+      font-size: var(--gq-text-base);
       cursor: pointer;
-      transition: background var(--t-fast);
-      border: 0.5px solid var(--hairline);
+      transition: background var(--t-fast), border-color var(--t-fast);
+      border: 1px solid transparent;
     }
-    .topbar-search:hover { background: var(--surface-2); }
-    .topbar-search svg { width: 13px; height: 13px; opacity: 0.7; }
+    .topbar-search:hover {
+      background: var(--gq-card);
+      border-color: var(--gq-line);
+      color: var(--gq-text-2);
+    }
+    .topbar-search svg { width: 14px; height: 14px; opacity: 0.85; stroke: currentColor; fill: none; }
     .topbar-search .spacer { flex: 1; }
     .kbd {
       display: inline-flex; align-items: center; justify-content: center;
       min-width: 18px; height: 18px; padding: 0 5px;
-      font-family: var(--sans); font-size: 11px;
-      color: var(--label-2);
-      background: var(--surface-2);
-      border-radius: 4px;
-      letter-spacing: 0;
+      font-family: var(--gq-sans); font-size: 11px;
+      color: var(--gq-text-2);
+      background: var(--gq-card);
+      border: 1px solid var(--gq-line-2);
+      border-radius: 3px;
     }
 
-    .topbar-right { display: flex; align-items: center; gap: 16px; }
+    .topbar-right { display: flex; align-items: center; gap: 14px; }
     .topbar-metric {
       display: inline-flex; align-items: baseline; gap: 6px;
-      font-family: var(--sans); font-size: 12.5px;
-      color: var(--label-2);
+      font-family: var(--gq-sans); font-size: var(--gq-text-sm);
+      color: var(--gq-text-3);
     }
     .topbar-metric .v {
       font-feature-settings: "tnum";
-      color: var(--label);
+      color: var(--gq-text);
       font-weight: 500;
     }
-    .topbar-metric .v.green { color: var(--green); }
-    .topbar-metric .v.warn  { color: var(--orange); }
-    .topbar-metric .sep {
-      color: var(--label-4); margin: 0 4px;
-    }
+    .topbar-metric .v.green { color: var(--gq-up); }
+    .topbar-metric .v.warn  { color: var(--gq-warn); }
+    .topbar-metric .sep { color: var(--gq-line); margin: 0 4px; }
+
     .icon-btn {
-      width: 30px; height: 30px;
+      width: 32px; height: 32px;
       display: grid; place-items: center;
-      border-radius: 6px;
-      color: var(--label-2);
+      border-radius: var(--gq-radius-sm);
+      color: var(--gq-mint-dark);
       transition: background var(--t-fast), color var(--t-fast);
     }
-    .icon-btn:hover { background: var(--surface-2); color: var(--label); }
-    .icon-btn svg { width: 15px; height: 15px; }
+    .icon-btn:hover { background: var(--gq-mint-soft); color: var(--gq-mint-dark); }
+    .icon-btn svg { width: 16px; height: 16px; stroke-width: 1.6; }
 
-    /* ----- main ----- */
+    /* ---------- main grid ---------- */
     .main {
       display: grid;
       grid-template-columns: var(--side-w) 1fr var(--rail-w);
       min-height: 0;
     }
 
-    /* ----- sidebar — vibrancy panel ----- */
+    /* ---------- sidebar ---------- */
     .side {
-      border-right: 0.5px solid var(--hairline);
+      background: var(--gq-card);
+      box-shadow: 1px 0 0 var(--gq-line-3);
       display: flex; flex-direction: column;
-      padding: 14px 12px;
+      padding: 16px 12px;
       gap: 24px;
       overflow: auto;
-      background: rgba(20,20,22,0.40);
-      backdrop-filter: saturate(180%) blur(40px);
-      -webkit-backdrop-filter: saturate(180%) blur(40px);
-      box-shadow: inset -0.5px 0 0 var(--hairline), inset 1px 0 0 rgba(255,255,255,0.02);
     }
-    .side-section { display: flex; flex-direction: column; gap: 4px; }
+    .side-section { display: flex; flex-direction: column; gap: 2px; }
     .side-label {
-      font-family: var(--display);
-      font-size: 11px; font-weight: 600;
-      color: var(--label-3);
-      letter-spacing: 0.02em;
-      text-transform: uppercase;
-      padding: 0 8px 4px;
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-xs); font-weight: 400;
+      color: var(--gq-text-3);
+      letter-spacing: 0.04em;
+      padding: 6px 12px 6px;
     }
     .side-row {
-      display: flex; align-items: center; gap: 10px;
-      padding: 7px 10px;
-      border-radius: 7px;
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 14px;
+      margin-bottom: 4px;
+      border-radius: var(--gq-radius-menu);
       cursor: pointer;
-      color: var(--label-2);
-      font-size: 13.5px;
-      letter-spacing: -0.005em;
+      color: var(--gq-text);
+      font-size: var(--gq-text-base);
       transition: background var(--t-fast), color var(--t-fast);
     }
-    .side-row:hover { background: var(--surface-1); color: var(--label); }
-    .side-row.active { background: var(--surface-2); color: var(--label); font-weight: 500; }
-    .side-row svg { width: 15px; height: 15px; opacity: 0.85; flex-shrink: 0; }
+    .side-row svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; flex-shrink: 0; opacity: 0.9; }
     .side-row .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .side-row .meta {
-      font-size: 12px; color: var(--label-3);
+      font-size: var(--gq-text-xs); color: var(--gq-text-3);
       font-feature-settings: "tnum";
     }
-    .side-row.active .meta { color: var(--label-2); }
+    .side-row:hover { background: var(--gq-mint-soft); color: var(--gq-mint-dark); }
+    .side-row:hover .meta { color: var(--gq-mint-dark); }
+    .side-row.active {
+      background: var(--gq-mint);
+      color: #FFFFFF;
+    }
+    .side-row.active .meta { color: rgba(255,255,255,0.85); }
 
     .acct-mark {
       width: 24px; height: 24px;
-      border-radius: 6px;
+      border-radius: var(--gq-radius-sm);
       display: grid; place-items: center;
-      font-size: 11.5px; font-weight: 600;
+      font-size: var(--gq-text-xs); font-weight: 600;
       flex-shrink: 0;
+      background: var(--gq-mint-soft);
+      color: var(--gq-mint-dark);
     }
-    .acct-mark.bin { background: rgba(255,159,10,0.18); color: var(--orange); }
-    .acct-mark.okx { background: rgba(94,92,230,0.18); color: var(--indigo); }
+    .acct-mark.bin { background: var(--gq-warn-soft); color: var(--gq-warn); }
+    .acct-mark.okx { background: var(--gq-mint-soft); color: var(--gq-mint-dark); }
+    .side-row.active .acct-mark { background: rgba(255,255,255,0.20); color: #FFFFFF; }
 
     .alloc-strip {
-      margin: 6px 8px 0;
-      display: flex; flex-direction: column; gap: 4px;
+      margin: 8px 12px 0;
+      display: flex; flex-direction: column; gap: 6px;
     }
     .alloc-bar {
-      height: 4px; border-radius: 2px;
-      background: var(--surface-1);
+      height: 6px; border-radius: var(--gq-radius-pill);
+      background: var(--gq-fill-light);
       overflow: hidden; display: flex;
     }
     .alloc-bar > div { height: 100%; }
     .alloc-line {
-      font-family: var(--sans); font-size: 11px;
-      color: var(--label-3);
+      font-family: var(--gq-sans); font-size: var(--gq-text-xs);
+      color: var(--gq-text-3);
       display: flex; justify-content: space-between;
       font-feature-settings: "tnum";
     }
 
-    /* ----- center ----- */
+    /* ---------- center ---------- */
     .center {
       overflow: auto; min-height: 0;
       padding: 24px 32px 32px;
+      background: var(--gq-bg);
     }
     .section-head {
       display: flex; justify-content: space-between; align-items: flex-end;
       gap: 24px; flex-wrap: wrap;
-      padding: 4px 4px 18px;
+      padding: 0 4px 18px;
     }
     .section-head h1 {
-      font-family: var(--display);
-      font-size: 32px; font-weight: 700;
-      letter-spacing: -0.02em;
-      color: var(--label);
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-xl); font-weight: 500;
+      color: var(--gq-text);
       margin: 0;
-      line-height: 1.1;
+      line-height: 1.2;
     }
     .section-head .sub {
-      font-family: var(--sans);
-      font-size: 13.5px;
-      color: var(--label-2);
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-sm);
+      color: var(--gq-text-3);
       margin-top: 6px;
-      letter-spacing: -0.005em;
     }
-    .section-head .sub .sep { color: var(--label-4); margin: 0 6px; }
-    .section-head .sub .green { color: var(--green); }
-    .section-head .sub .orange { color: var(--orange); }
+    .section-head .sub .sep { color: var(--gq-line); margin: 0 6px; }
+    .section-head .sub .green { color: var(--gq-up); }
+    .section-head .sub .orange { color: var(--gq-warn); }
 
-    /* segmented control — macOS style */
+    /* segmented filter */
     .segment {
       display: inline-flex;
-      background: var(--surface-1);
-      border-radius: 7px;
+      background: var(--gq-card);
+      border: 1px solid var(--gq-line-2);
+      border-radius: var(--gq-radius-sm);
       padding: 2px;
       gap: 0;
     }
     .segment > button {
-      padding: 5px 13px;
-      font-size: 12.5px; color: var(--label-2);
-      border-radius: 5px;
-      letter-spacing: -0.005em;
+      padding: 5px 14px;
+      font-size: var(--gq-text-sm); color: var(--gq-text-2);
+      border-radius: 3px;
       transition: background var(--t-fast), color var(--t-fast);
     }
     .segment > button.active {
-      background: var(--card-2);
-      color: var(--label);
+      background: var(--gq-mint);
+      color: #FFFFFF;
       font-weight: 500;
-      box-shadow: 0 1px 0 rgba(255,255,255,0.05) inset, 0 0.5px 1px rgba(0,0,0,0.3);
     }
-    .segment > button:not(.active):hover { color: var(--label); }
+    .segment > button:not(.active):hover { color: var(--gq-mint-dark); background: var(--gq-mint-soft); }
     .segment .cnt {
       font-feature-settings: "tnum";
-      color: var(--label-3); margin-left: 5px;
+      color: var(--gq-text-3); margin-left: 6px;
     }
-    .segment > button.active .cnt { color: var(--label-2); }
+    .segment > button.active .cnt { color: rgba(255,255,255,0.80); }
 
     .head-actions { display: flex; gap: 10px; align-items: center; }
+
     .btn-primary {
       display: inline-flex; align-items: center; gap: 6px;
-      padding: 6px 12px;
-      background: var(--blue);
-      color: white;
-      font-size: 12.5px; font-weight: 500;
-      letter-spacing: -0.005em;
-      border-radius: 7px;
-      transition: filter var(--t-fast), transform var(--t-fast);
+      height: 36px;
+      padding: 0 16px;
+      background: var(--gq-mint);
+      color: #FFFFFF;
+      border: 1px solid var(--gq-mint);
+      font-size: var(--gq-text-base); font-weight: 500;
+      border-radius: var(--gq-radius-sm);
+      transition: background var(--t-fast), box-shadow var(--t-fast);
     }
-    .btn-primary:hover { filter: brightness(1.08); }
-    .btn-primary:active { transform: scale(0.98); }
-    .btn-primary svg { width: 13px; height: 13px; }
+    .btn-primary:hover { background: var(--gq-mint-dark); border-color: var(--gq-mint-dark); box-shadow: var(--gq-shadow-mint); }
+    .btn-primary:active { transform: translateY(0.5px); }
+    .btn-primary svg { width: 14px; height: 14px; stroke-width: 1.8; }
+    .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; background: var(--gq-mint); }
 
-    /* ----- channels card — single grouped card, depth + inner highlight ----- */
+    /* ---------- channels ---------- */
     .channels-card {
-      background: linear-gradient(180deg, rgba(40,40,44,0.85) 0%, rgba(28,28,30,0.85) 100%);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border-radius: var(--radius);
+      background: var(--gq-card);
+      border-radius: var(--gq-radius);
+      box-shadow: var(--gq-shadow-card);
       overflow: hidden;
-      border: 0.5px solid rgba(255,255,255,0.08);
-      box-shadow:
-        inset 0 1px 0 rgba(255,255,255,0.06),
-        inset 0 0 0 0.5px rgba(255,255,255,0.02),
-        0 1px 2px rgba(0,0,0,0.3),
-        0 12px 32px -8px rgba(0,0,0,0.5);
     }
     .channel {
       display: grid;
       grid-template-columns: 44px 1fr auto;
       gap: 14px;
       align-items: center;
-      padding: 14px 18px;
+      padding: 16px 20px;
       cursor: pointer;
-      transition: background var(--t-fast), transform var(--t-fast), box-shadow var(--t-fast);
+      transition: background var(--t-fast);
       position: relative;
+      border-bottom: 1px solid var(--gq-line-3);
     }
-    .channel + .channel::before {
-      content: "";
-      position: absolute;
-      top: 0; left: 76px; right: 0; height: 0.5px;
-      background: var(--hairline);
-    }
-    .channel:hover {
-      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
-      box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.06);
-    }
-    .channel:active { transform: scale(0.998); }
-    .channel.offline { opacity: 0.45; }
-    .channel.offline:hover { opacity: 0.7; }
+    .channel:last-child { border-bottom: none; }
+    .channel:hover { background: var(--gq-fill-light); }
+    .channel.offline { opacity: 0.55; }
+    .channel.offline:hover { opacity: 0.8; }
 
     .ch-avatar {
       width: 40px; height: 40px;
       display: grid; place-items: center;
-      font-family: var(--display);
-      font-weight: 600; font-size: 14px;
-      letter-spacing: -0.01em;
-      border-radius: 10px;
-      color: white;
+      font-family: var(--gq-sans);
+      font-weight: 600; font-size: 13px;
+      letter-spacing: 0.02em;
+      border-radius: 50%;
+      color: #FFFFFF;
       position: relative;
       flex-shrink: 0;
-      box-shadow:
-        0 1px 0 rgba(255,255,255,0.20) inset,
-        0 -1px 0 rgba(0,0,0,0.20) inset,
-        0 0 0 0.5px rgba(0,0,0,0.4),
-        0 4px 10px -2px rgba(0,0,0,0.5);
-      overflow: hidden;
     }
-    /* avatar colours = source group, three-stop gradient + radial highlight */
-    .ch-avatar::after {
-      content: "";
-      position: absolute; inset: 0;
-      background: radial-gradient(ellipse 60% 40% at 30% 18%, rgba(255,255,255,0.28), transparent 60%);
-      pointer-events: none;
-    }
-    .av-blue   { background: linear-gradient(160deg, #5AB1FF 0%, #0A84FF 45%, #1E54B7 100%); }
-    .av-orange { background: linear-gradient(160deg, #FFB94A 0%, #FF9F0A 45%, #C85A00 100%); }
-    .av-purple { background: linear-gradient(160deg, #D89BFA 0%, #BF5AF2 45%, #6F2FB5 100%); }
-    .av-pink   { background: linear-gradient(160deg, #FF6E8E 0%, #FF375F 45%, #B5193A 100%); }
-    .av-green  { background: linear-gradient(160deg, #6BE08C 0%, #30D158 45%, #1F8D3D 100%); }
-    .av-teal   { background: linear-gradient(160deg, #97DFFF 0%, #64D2FF 45%, #1F86A8 100%); }
-    .av-indigo { background: linear-gradient(160deg, #8B89F0 0%, #5E5CE6 45%, #2D2BAF 100%); }
-    .av-gray   { background: linear-gradient(160deg, #B0B0B5 0%, #8E8E93 45%, #48484A 100%); }
+    /* avatar palette — flat mint-friendly hues, no gradients */
+    .av-blue   { background: #3ACBBE; }
+    .av-orange { background: #E6A23C; }
+    .av-purple { background: #62DAD2; }
+    .av-pink   { background: #EB4A61; }
+    .av-green  { background: #23A599; }
+    .av-teal   { background: #8BE3DD; color: var(--gq-mint-dark); }
+    .av-indigo { background: #2E9992; }
+    .av-gray   { background: #C0C4CC; }
 
     .ch-avatar .dot {
       position: absolute; bottom: -1px; right: -1px;
       width: 10px; height: 10px; border-radius: 50%;
-      border: 2px solid #1F1F22;
+      border: 2px solid var(--gq-card);
       z-index: 2;
     }
-    .channel:hover .ch-avatar .dot { border-color: #2A2A2D; }
+    .channel:hover .ch-avatar .dot { border-color: var(--gq-fill-light); }
     .dot.live  {
-      background: var(--green);
-      box-shadow: 0 0 0 0 rgba(48,209,88,0.6);
-      animation: pulse-green 2s cubic-bezier(0.25,0.1,0.25,1) infinite;
+      background: var(--gq-up);
+      box-shadow: 0 0 0 0 rgba(35,165,153,0.45);
+      animation: pulse-mint 2s ease-out infinite;
     }
     .dot.stale {
-      background: var(--orange);
-      box-shadow: 0 0 0 0 rgba(255,159,10,0.5);
-      animation: pulse-orange 2.4s cubic-bezier(0.25,0.1,0.25,1) infinite;
+      background: var(--gq-warn);
+      box-shadow: 0 0 0 0 rgba(230,162,60,0.40);
+      animation: pulse-warn 2.4s ease-out infinite;
     }
-    .dot.off   { background: var(--label-4); }
-    @keyframes pulse-green {
-      0%,100% { box-shadow: 0 0 0 0 rgba(48,209,88,0.6); }
-      55%     { box-shadow: 0 0 0 5px rgba(48,209,88,0); }
+    .dot.off { background: var(--gq-text-4); }
+    @keyframes pulse-mint {
+      0%,100% { box-shadow: 0 0 0 0 rgba(35,165,153,0.45); }
+      55%     { box-shadow: 0 0 0 5px rgba(35,165,153,0); }
     }
-    @keyframes pulse-orange {
-      0%,100% { box-shadow: 0 0 0 0 rgba(255,159,10,0.5); }
-      55%     { box-shadow: 0 0 0 5px rgba(255,159,10,0); }
+    @keyframes pulse-warn {
+      0%,100% { box-shadow: 0 0 0 0 rgba(230,162,60,0.40); }
+      55%     { box-shadow: 0 0 0 5px rgba(230,162,60,0); }
     }
 
     .ch-body {
-      display: flex; flex-direction: column; gap: 1px;
+      display: flex; flex-direction: column; gap: 2px;
       min-width: 0;
     }
     .ch-name {
-      font-family: var(--display);
-      font-size: 15px;
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-md);
       font-weight: 600;
-      letter-spacing: -0.012em;
-      color: var(--label);
+      color: var(--gq-text);
       display: flex; align-items: center; gap: 8px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .ch-stamp {
-      font-family: var(--sans);
-      font-size: 10.5px;
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-xs);
       font-weight: 500;
-      padding: 1px 7px;
-      border-radius: 4px;
-      letter-spacing: 0;
+      padding: 1px 8px;
+      border-radius: var(--gq-radius-xs);
     }
-    .ch-stamp.stale { background: var(--orange-soft); color: var(--orange); }
-    .ch-stamp.off   { background: rgba(142,142,147,0.14); color: var(--label-3); }
+    .ch-stamp.stale { background: var(--gq-warn-soft); color: var(--gq-warn); }
+    .ch-stamp.off   { background: var(--gq-fill-light); color: var(--gq-text-3); }
 
     .ch-sub {
-      font-family: var(--sans);
-      font-size: 12.5px;
-      color: var(--label-2);
-      letter-spacing: -0.005em;
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-sm);
+      color: var(--gq-text-3);
       display: flex; align-items: center; gap: 5px;
       flex-wrap: wrap;
       font-feature-settings: "tnum";
     }
-    .ch-sub .src {
-      color: var(--label-2);
-    }
-    .ch-sub .sep { color: var(--label-4); margin: 0 1px; }
+    .ch-sub .src { color: var(--gq-text-3); }
+    .ch-sub .sep { color: var(--gq-line); margin: 0 1px; }
 
     .ch-acc {
       display: flex; flex-direction: column; align-items: flex-end;
       gap: 1px;
     }
     .ch-acc .v {
-      font-family: var(--display);
-      font-size: 17px;
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-md);
       font-weight: 600;
-      letter-spacing: -0.015em;
       font-feature-settings: "tnum";
-      color: var(--label);
+      color: var(--gq-text);
     }
-    .ch-acc .v.green { color: var(--green); text-shadow: 0 0 22px rgba(48,209,88,0.28); }
-    .ch-acc .v.warn  { color: var(--orange); text-shadow: 0 0 22px rgba(255,159,10,0.22); }
-    .ch-acc .v.bad   { color: var(--red); text-shadow: 0 0 22px rgba(255,69,58,0.25); }
-    .ch-acc .v.dim   { color: var(--label-3); }
+    .ch-acc .v.green { color: var(--gq-up); }
+    .ch-acc .v.warn  { color: var(--gq-warn); }
+    .ch-acc .v.bad   { color: var(--gq-down); }
+    .ch-acc .v.dim   { color: var(--gq-text-3); }
     .ch-acc .lbl {
-      font-family: var(--sans);
-      font-size: 11px;
-      color: var(--label-3);
-      letter-spacing: -0.005em;
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-xs);
+      color: var(--gq-text-3);
     }
 
-    /* ----- right rail · signal feed ----- */
+    /* ---------- right rail · signal feed ---------- */
     .rail {
-      border-left: 0.5px solid var(--hairline);
+      background: var(--gq-card);
+      box-shadow: -1px 0 0 var(--gq-line-3);
       display: flex; flex-direction: column;
       min-height: 0;
-      background: rgba(20,20,22,0.45);
-      backdrop-filter: saturate(180%) blur(40px);
-      -webkit-backdrop-filter: saturate(180%) blur(40px);
-      box-shadow: inset 0.5px 0 0 var(--hairline), inset -1px 0 0 rgba(255,255,255,0.02);
     }
     .rail-head {
-      padding: 16px 20px 14px;
+      padding: 18px 20px 14px;
       display: flex; align-items: baseline; justify-content: space-between;
+      border-bottom: 1px solid var(--gq-line-3);
     }
     .rail-head h2 {
-      font-family: var(--display);
-      font-size: 19px; font-weight: 600;
-      letter-spacing: -0.015em;
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-lg); font-weight: 500;
+      color: var(--gq-text);
       margin: 0;
     }
     .rail-head .meta {
-      font-size: 12px; color: var(--label-3);
+      font-size: var(--gq-text-xs); color: var(--gq-text-3);
       font-feature-settings: "tnum";
+      margin-top: 4px;
     }
-    .rail-actions { display: flex; gap: 2px; }
-    .rail-list { flex: 1; overflow: auto; padding: 0 8px 16px; }
+    .rail-actions { display: flex; gap: 4px; }
+    .rail-list { flex: 1; overflow: auto; padding: 8px; }
     .signal {
       display: grid;
       grid-template-columns: auto 1fr auto;
       gap: 12px;
       padding: 11px 12px;
-      border-radius: 8px;
+      border-radius: var(--gq-radius-sm);
       transition: background var(--t-fast);
       animation: signal-in var(--t-base);
     }
     @keyframes signal-in {
-      from { opacity: 0; transform: translateY(-6px); background: var(--blue-soft); }
+      from { opacity: 0; transform: translateY(-4px); background: var(--gq-mint-soft); }
       to   { opacity: 1; transform: none; }
     }
-    .signal:hover { background: var(--surface-1); }
-    .signal.fail { background: rgba(255,69,58,0.06); }
+    .signal:hover { background: var(--gq-fill-light); }
+    .signal.fail { background: var(--gq-down-soft); }
     .signal-avatar {
       width: 28px; height: 28px;
-      border-radius: 7px;
+      border-radius: 50%;
       display: grid; place-items: center;
-      font-size: 10.5px; font-weight: 600;
-      color: white;
+      font-size: 11px; font-weight: 600;
+      color: #FFFFFF;
       flex-shrink: 0;
-      position: relative;
-      box-shadow:
-        0 1px 0 rgba(255,255,255,0.18) inset,
-        0 -1px 0 rgba(0,0,0,0.18) inset,
-        0 0 0 0.5px rgba(0,0,0,0.4),
-        0 2px 6px -1px rgba(0,0,0,0.5);
-      overflow: hidden;
-    }
-    .signal-avatar::after {
-      content: "";
-      position: absolute; inset: 0;
-      background: radial-gradient(ellipse 60% 40% at 30% 18%, rgba(255,255,255,0.28), transparent 60%);
-      pointer-events: none;
     }
     .signal-body {
       min-width: 0;
-      display: flex; flex-direction: column; gap: 1px;
+      display: flex; flex-direction: column; gap: 2px;
     }
     .signal-l1 {
-      font-size: 12.5px;
-      color: var(--label);
-      letter-spacing: -0.005em;
-      display: flex; align-items: baseline; gap: 5px;
+      font-size: var(--gq-text-sm);
+      color: var(--gq-text);
+      display: flex; align-items: baseline; gap: 6px;
       flex-wrap: wrap;
     }
-    .signal-l1 .lname { color: var(--label); font-weight: 500; }
-    .signal-l1 .verb  { color: var(--label-2); }
-    .signal-l1 .verb.add   { color: var(--green); }
-    .signal-l1 .verb.red   { color: var(--orange); }
-    .signal-l1 .verb.open  { color: var(--blue); }
-    .signal-l1 .verb.close { color: var(--red); }
+    .signal-l1 .lname { color: var(--gq-text); font-weight: 500; }
+    .signal-l1 .verb  { color: var(--gq-text-2); }
+    .signal-l1 .verb.add   { color: var(--gq-up); }
+    .signal-l1 .verb.red   { color: var(--gq-warn); }
+    .signal-l1 .verb.open  { color: var(--gq-mint-dark); }
+    .signal-l1 .verb.close { color: var(--gq-down); }
     .signal-l1 .sym {
-      font-family: var(--mono); font-size: 11.5px; font-weight: 500;
+      font-family: var(--gq-mono); font-size: var(--gq-text-xs); font-weight: 500;
     }
-    .signal-l1 .side-l { color: var(--green); font-family: var(--mono); font-size: 10.5px; }
-    .signal-l1 .side-s { color: var(--red); font-family: var(--mono); font-size: 10.5px; }
-    .signal-l1 .lev    { color: var(--label-3); font-family: var(--mono); font-size: 10.5px; }
+    .signal-l1 .side-l { color: var(--gq-up); font-family: var(--gq-mono); font-size: var(--gq-text-xs); }
+    .signal-l1 .side-s { color: var(--gq-down); font-family: var(--gq-mono); font-size: var(--gq-text-xs); }
+    .signal-l1 .lev    { color: var(--gq-text-3); font-family: var(--gq-mono); font-size: var(--gq-text-xs); }
     .signal-l2 {
-      font-size: 11px; color: var(--label-3);
+      font-size: var(--gq-text-xs); color: var(--gq-text-3);
       font-feature-settings: "tnum";
       display: flex; gap: 8px; align-items: baseline;
     }
-    .signal-l2 .ok   { color: var(--green); }
-    .signal-l2 .skip { color: var(--label-3); }
-    .signal-l2 .fail { color: var(--red); }
+    .signal-l2 .ok   { color: var(--gq-up); }
+    .signal-l2 .skip { color: var(--gq-text-3); }
+    .signal-l2 .fail { color: var(--gq-down); }
     .signal-time {
-      font-family: var(--sans);
-      font-size: 10.5px; color: var(--label-3);
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-xs); color: var(--gq-text-3);
       align-self: flex-start;
       font-feature-settings: "tnum";
     }
 
-    /* ----- palette · macOS Spotlight feel ----- */
+    /* ---------- command palette ---------- */
     .palette-bg {
       position: fixed; inset: 0;
-      background: rgba(0,0,0,0.45);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
+      background: rgba(52, 64, 84, 0.40);
       display: grid; place-items: start center;
       padding-top: 14vh;
       z-index: 50;
@@ -672,36 +584,31 @@
     @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
     .palette {
       width: 580px; max-width: calc(100vw - 32px);
-      background: rgba(44,44,46,0.92);
-      backdrop-filter: saturate(180%) blur(40px);
-      -webkit-backdrop-filter: saturate(180%) blur(40px);
-      border: 0.5px solid var(--hairline-2);
-      border-radius: var(--radius-lg);
-      box-shadow: 0 20px 60px -12px rgba(0,0,0,0.7);
+      background: var(--gq-card);
+      border-radius: var(--gq-radius);
+      box-shadow: var(--gq-shadow-hover);
       overflow: hidden;
-      animation: pop 220ms cubic-bezier(0.25,0.1,0.25,1);
+      animation: pop 200ms ease-out;
     }
-    @keyframes pop { from { transform: translateY(-8px) scale(0.97); opacity: 0; } to { transform: none; opacity: 1; } }
+    @keyframes pop { from { transform: translateY(-6px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
     .palette-input {
       display: flex; align-items: center; gap: 10px;
       padding: 14px 18px;
-      border-bottom: 0.5px solid var(--hairline);
+      border-bottom: 1px solid var(--gq-line-3);
     }
-    .palette-input svg { width: 16px; height: 16px; color: var(--label-3); }
+    .palette-input svg { width: 16px; height: 16px; color: var(--gq-text-3); }
     .palette-input input {
       flex: 1;
-      font-size: 17px;
-      font-family: var(--display);
-      color: var(--label);
-      letter-spacing: -0.015em;
+      font-size: var(--gq-text-md);
+      font-family: var(--gq-sans);
+      color: var(--gq-text);
     }
     .palette-list { padding: 8px; max-height: 380px; overflow: auto; }
     .palette-section {
-      font-family: var(--display);
-      font-size: 11px; font-weight: 600;
-      color: var(--label-3);
-      letter-spacing: 0.02em;
-      text-transform: uppercase;
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-xs); font-weight: 400;
+      color: var(--gq-text-3);
+      letter-spacing: 0.04em;
       padding: 8px 12px 4px;
     }
     .palette-item {
@@ -709,40 +616,40 @@
       grid-template-columns: 28px 1fr auto;
       gap: 10px; align-items: center;
       padding: 8px 12px;
-      border-radius: 7px;
+      border-radius: var(--gq-radius-sm);
       cursor: pointer;
-      color: var(--label);
-      font-size: 13.5px;
-      letter-spacing: -0.005em;
+      color: var(--gq-text);
+      font-size: var(--gq-text-base);
     }
-    .palette-item:hover, .palette-item.sel { background: var(--blue); color: white; }
+    .palette-item:hover, .palette-item.sel {
+      background: var(--gq-mint);
+      color: #FFFFFF;
+    }
     .palette-item .icon-slot {
       width: 24px; height: 24px;
       display: grid; place-items: center;
-      border-radius: 6px;
-      background: var(--surface-2);
-      color: var(--label-2);
+      border-radius: var(--gq-radius-sm);
+      background: var(--gq-fill-light);
+      color: var(--gq-text-2);
     }
     .palette-item:hover .icon-slot, .palette-item.sel .icon-slot {
-      background: rgba(255,255,255,0.18); color: white;
+      background: rgba(255,255,255,0.20); color: #FFFFFF;
     }
-    .palette-item .icon-slot svg { width: 13px; height: 13px; }
+    .palette-item .icon-slot svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.6; }
     .palette-item .pname { font-weight: 500; }
-    .palette-item .phint { font-size: 12px; color: var(--label-3); }
-    .palette-item:hover .phint, .palette-item.sel .phint { color: rgba(255,255,255,0.75); }
+    .palette-item .phint { font-size: var(--gq-text-xs); color: var(--gq-text-3); }
+    .palette-item:hover .phint, .palette-item.sel .phint { color: rgba(255,255,255,0.78); }
     .palette-foot {
-      padding: 9px 16px;
-      border-top: 0.5px solid var(--hairline);
+      padding: 10px 16px;
+      border-top: 1px solid var(--gq-line-3);
       display: flex; gap: 14px; align-items: center;
-      font-size: 11px; color: var(--label-3);
+      font-size: var(--gq-text-xs); color: var(--gq-text-3);
     }
 
-    /* ----- import modal ----- */
+    /* ---------- modals ---------- */
     .modal-bg {
       position: fixed; inset: 0;
-      background: rgba(0,0,0,0.5);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
+      background: rgba(52, 64, 84, 0.50);
       display: grid; place-items: center;
       z-index: 60;
       animation: fade 140ms ease-out;
@@ -750,215 +657,241 @@
     }
     .modal {
       width: 560px; max-width: 100%;
-      background: var(--card);
-      border-radius: var(--radius-lg);
-      border: 0.5px solid var(--hairline-2);
-      box-shadow: 0 24px 64px -12px rgba(0,0,0,0.7);
+      background: var(--gq-card);
+      border-radius: var(--gq-radius);
+      box-shadow: var(--gq-shadow-hover);
       overflow: hidden;
-      animation: pop 240ms cubic-bezier(0.25,0.1,0.25,1);
+      animation: pop 220ms ease-out;
     }
     .modal-head {
-      padding: 22px 24px 18px;
-      border-bottom: 0.5px solid var(--hairline);
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--gq-line-3);
     }
     .modal-head h3 {
-      font-family: var(--display);
-      font-size: 22px; font-weight: 700;
-      letter-spacing: -0.018em;
-      margin: 0; color: var(--label);
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-lg); font-weight: 500;
+      margin: 0; color: var(--gq-text);
     }
     .modal-head .sub {
-      font-size: 13px; color: var(--label-2);
-      margin-top: 4px;
-      letter-spacing: -0.005em;
+      font-size: var(--gq-text-sm); color: var(--gq-text-3);
+      margin-top: 6px;
+      line-height: 1.5;
     }
-    .modal-body { padding: 8px; max-height: 60vh; overflow: auto; }
+    .modal-body { padding: 12px; max-height: 60vh; overflow: auto; }
     .src-row {
       display: grid;
       grid-template-columns: 36px 1fr auto;
       gap: 14px; align-items: center;
       padding: 12px 14px;
-      border-radius: 9px;
+      border-radius: var(--gq-radius-sm);
       cursor: pointer;
       transition: background var(--t-fast);
     }
     .src-row + .src-row { margin-top: 2px; }
-    .src-row:hover { background: var(--surface-1); }
+    .src-row:hover { background: var(--gq-mint-soft); }
     .src-icon {
       width: 36px; height: 36px;
-      border-radius: 9px;
+      border-radius: var(--gq-radius-sm);
       display: grid; place-items: center;
-      font-family: var(--display);
-      font-size: 11.5px; font-weight: 600;
-      color: white;
-      box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset;
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-xs); font-weight: 600;
+      color: #FFFFFF;
     }
-    .src-icon.binance     { background: linear-gradient(160deg, #FF9F0A, #C85A00); }
-    .src-icon.binance-sm  { background: linear-gradient(160deg, #FF9F0A, #7A3700); }
-    .src-icon.okx         { background: linear-gradient(160deg, #5E5CE6, #2D2BAF); }
-    .src-icon.okx-lead    { background: linear-gradient(160deg, #64D2FF, #1F86A8); }
-    .src-icon.hyperliquid { background: linear-gradient(160deg, #30D158, #1F8D3D); }
-    .src-icon.bicoin      { background: linear-gradient(160deg, #FF375F, #B5193A); }
-    .src-icon.project     { background: linear-gradient(160deg, #8E8E93, #48484A); }
+    .src-icon.binance     { background: var(--gq-warn); }
+    .src-icon.binance-sm  { background: var(--gq-warn); opacity: 0.8; }
+    .src-icon.okx         { background: var(--gq-mint-dark); }
+    .src-icon.okx-lead    { background: var(--gq-mint); }
+    .src-icon.hyperliquid { background: var(--gq-up); }
+    .src-icon.bicoin      { background: var(--gq-down); }
+    .src-icon.project     { background: var(--gq-text-3); }
     .src-name {
-      font-family: var(--display);
-      font-size: 14px; font-weight: 600;
-      letter-spacing: -0.012em;
-      color: var(--label);
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-base); font-weight: 600;
+      color: var(--gq-text);
     }
     .src-desc {
-      font-size: 12px;
-      color: var(--label-2);
+      font-size: var(--gq-text-sm);
+      color: var(--gq-text-3);
       margin-top: 2px;
-      letter-spacing: -0.005em;
     }
     .src-status {
-      font-size: 11px; font-weight: 500;
+      font-size: var(--gq-text-xs); font-weight: 500;
       padding: 2px 8px;
-      border-radius: 4px;
-      letter-spacing: 0;
+      border-radius: var(--gq-radius-xs);
     }
-    .src-status.ready { background: var(--green-soft); color: var(--green); }
-    .src-status.beta  { background: var(--orange-soft); color: var(--orange); }
-    .src-status.soon  { background: var(--surface-2); color: var(--label-3); }
+    .src-status.ready { background: var(--gq-up-soft); color: var(--gq-up); }
+    .src-status.beta  { background: var(--gq-warn-soft); color: var(--gq-warn); }
+    .src-status.soon  { background: var(--gq-fill-light); color: var(--gq-text-3); }
     .modal-foot {
       padding: 12px 22px;
-      border-top: 0.5px solid var(--hairline);
-      font-size: 11.5px; color: var(--label-3);
+      border-top: 1px solid var(--gq-line-3);
+      font-size: var(--gq-text-xs); color: var(--gq-text-3);
     }
 
-    /* ----- detail view ----- */
+    /* ---------- token modal additions ---------- */
+    .modal-body.token-body { padding: 22px 24px 14px; }
+    .token-input {
+      width: 100%;
+      height: 40px;
+      padding: 0 14px;
+      background: var(--gq-card);
+      border: 1px solid var(--gq-line);
+      border-radius: var(--gq-radius-sm);
+      color: var(--gq-text);
+      font-family: var(--gq-mono);
+      font-size: var(--gq-text-base);
+      letter-spacing: 0.02em;
+      outline: none;
+      transition: border-color var(--t-fast), box-shadow var(--t-fast);
+    }
+    .token-input:focus {
+      border-color: var(--gq-mint);
+      box-shadow: 0 0 0 3px rgba(58,203,190,0.15);
+    }
+
+    /* footer of token modal: link buttons + primary button */
+    .modal-foot:has(.btn-primary),
+    .modal-foot:has(.link-btn) {
+      display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+      padding: 14px 22px 18px;
+      font-size: var(--gq-text-sm);
+      color: var(--gq-text-3);
+    }
+    .link-btn {
+      height: 36px;
+      padding: 0 14px;
+      font-size: var(--gq-text-sm);
+      color: var(--gq-text-2);
+      border: 1px solid var(--gq-line);
+      background: var(--gq-card);
+      border-radius: var(--gq-radius-sm);
+      transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast);
+    }
+    .link-btn:hover:not(:disabled) {
+      color: var(--gq-mint-dark);
+      border-color: var(--gq-mint-3);
+      background: var(--gq-mint-soft);
+    }
+    .link-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .api-banner {
+      margin: 8px 14px 0;
+      padding: 10px 14px;
+      border-radius: var(--gq-radius-sm);
+      font-size: var(--gq-text-sm); line-height: 1.5;
+      background: var(--gq-down-soft);
+      color: var(--gq-down);
+      border: 1px solid rgba(235,74,97,0.20);
+    }
+
+    /* ---------- detail view ---------- */
     .detail { display: flex; flex-direction: column; gap: 18px; }
     .detail-back {
       display: inline-flex; align-items: center; gap: 4px;
-      color: var(--blue);
-      font-size: 13.5px;
+      color: var(--gq-mint-dark);
+      font-size: var(--gq-text-base);
       cursor: pointer;
       padding: 4px 0;
       font-weight: 400;
-      letter-spacing: -0.005em;
     }
-    .detail-back:hover { opacity: 0.8; }
-    .detail-back svg { width: 14px; height: 14px; }
+    .detail-back:hover { color: var(--gq-mint-2); }
+    .detail-back svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 
     .detail-hero {
       display: grid;
       grid-template-columns: 64px 1fr auto;
       gap: 18px;
       align-items: center;
-      padding: 4px 4px 10px;
+      padding: 4px 4px 12px;
       position: relative;
-    }
-    /* soft glow halo behind the avatar — Apple Stocks ticker-page vibe */
-    .detail-hero::before {
-      content: "";
-      position: absolute;
-      left: -40px; top: -10px;
-      width: 220px; height: 120px;
-      background: radial-gradient(ellipse 50% 60% at 30% 50%, rgba(10,132,255,0.16), transparent 70%);
-      pointer-events: none;
-      z-index: -1;
     }
     .detail-hero .ch-avatar {
       width: 64px; height: 64px;
       font-size: 22px;
-      border-radius: 14px;
+      border-radius: 50%;
     }
     .dh-name {
-      font-family: var(--display);
-      font-size: 30px; font-weight: 700;
-      letter-spacing: -0.024em;
-      color: var(--label);
-      line-height: 1.05;
+      font-family: var(--gq-sans);
+      font-size: 26px; font-weight: 600;
+      color: var(--gq-text);
+      line-height: 1.2;
     }
     .dh-sub {
-      font-size: 13.5px; color: var(--label-2);
+      font-size: var(--gq-text-sm); color: var(--gq-text-3);
       margin-top: 4px;
-      letter-spacing: -0.005em;
     }
-    .dh-stats {
-      display: flex; gap: 24px;
-    }
+    .dh-stats { display: flex; gap: 28px; }
     .dh-stat .k {
-      font-size: 11px; color: var(--label-3);
-      letter-spacing: -0.005em;
+      font-size: var(--gq-text-xs); color: var(--gq-text-3);
     }
     .dh-stat .v {
-      font-family: var(--display);
-      font-size: 19px; font-weight: 600;
-      letter-spacing: -0.015em;
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-lg); font-weight: 600;
       font-feature-settings: "tnum";
-      color: var(--label);
+      color: var(--gq-text);
       margin-top: 2px;
     }
-    .dh-stat .v.green { color: var(--green); }
+    .dh-stat .v.green { color: var(--gq-up); }
 
     .compare {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 14px;
+      gap: 16px;
     }
     .compare-card {
-      background: linear-gradient(180deg, rgba(40,40,44,0.85) 0%, rgba(28,28,30,0.85) 100%);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border-radius: var(--radius);
-      border: 0.5px solid rgba(255,255,255,0.08);
-      box-shadow:
-        inset 0 1px 0 rgba(255,255,255,0.06),
-        0 1px 2px rgba(0,0,0,0.3),
-        0 12px 32px -8px rgba(0,0,0,0.45);
+      background: var(--gq-card);
+      border-radius: var(--gq-radius);
+      box-shadow: var(--gq-shadow-card);
       overflow: hidden;
     }
     .compare-head {
       padding: 14px 18px 12px;
       display: flex; justify-content: space-between; align-items: baseline;
+      border-bottom: 1px solid var(--gq-line-3);
     }
     .compare-head .label {
-      font-family: var(--display);
-      font-size: 14px; font-weight: 600;
-      letter-spacing: -0.012em;
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-base); font-weight: 600;
     }
-    .compare-head .label.l { color: var(--blue); }
-    .compare-head .label.r { color: var(--green); }
+    .compare-head .label.l { color: var(--gq-mint-dark); }
+    .compare-head .label.r { color: var(--gq-up); }
     .compare-head .badge {
-      font-size: 11px; color: var(--label-3);
+      font-size: var(--gq-text-xs); color: var(--gq-text-3);
       font-feature-settings: "tnum";
     }
     .pos-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 12.5px;
+      font-size: var(--gq-text-sm);
     }
     .pos-table th {
       text-align: right;
-      padding: 8px 16px;
-      font-size: 10.5px; font-weight: 500;
-      color: var(--label-3);
-      border-top: 0.5px solid var(--hairline);
-      letter-spacing: -0.005em;
+      padding: 10px 16px;
+      font-size: var(--gq-text-xs); font-weight: 600;
+      color: var(--gq-mint-dark);
+      background: var(--gq-fill-light);
+      border-bottom: 1px solid var(--gq-line-3);
     }
     .pos-table th:first-child { text-align: left; }
     .pos-table td {
-      padding: 10px 16px;
-      border-top: 0.5px solid var(--hairline);
-      color: var(--label);
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--gq-line-3);
+      color: var(--gq-text);
       font-feature-settings: "tnum";
     }
+    .pos-table tbody tr:last-child td { border-bottom: none; }
     .pos-table td.r { text-align: right; }
-    .pos-table tbody tr.diff td { background: rgba(255,159,10,0.06); }
-    .pos-table tbody tr.miss td { background: rgba(255,69,58,0.06); }
-    .pos-table .symquote { color: var(--label-3); }
-    .side-l { color: var(--green); }
-    .side-s { color: var(--red); }
+    .pos-table tbody tr:hover td { background: var(--gq-fill-light); }
+    .pos-table tbody tr.diff td { background: var(--gq-warn-soft); }
+    .pos-table tbody tr.miss td { background: var(--gq-down-soft); }
+    .pos-table .symquote { color: var(--gq-text-3); }
+    .side-l { color: var(--gq-up); }
+    .side-s { color: var(--gq-down); }
 
     .deviation {
-      background: linear-gradient(180deg, rgba(40,40,44,0.85) 0%, rgba(28,28,30,0.85) 100%);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border-radius: var(--radius);
-      border: 0.5px solid rgba(255,255,255,0.08);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 2px rgba(0,0,0,0.3);
+      background: var(--gq-card);
+      border-radius: var(--gq-radius);
+      box-shadow: var(--gq-shadow-card);
       padding: 16px 20px;
       display: grid;
       grid-template-columns: 1fr auto auto auto;
@@ -966,77 +899,69 @@
       align-items: center;
     }
     .deviation .label {
-      font-family: var(--sans);
-      font-size: 13.5px;
-      color: var(--label);
-      letter-spacing: -0.005em;
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-base);
+      color: var(--gq-text);
     }
     .deviation .label em {
-      font-style: normal; color: var(--green);
+      font-style: normal; color: var(--gq-up);
       font-weight: 500;
     }
     .deviation .stat {
-      font-size: 12.5px;
+      font-size: var(--gq-text-sm);
       font-feature-settings: "tnum";
-      color: var(--label);
+      color: var(--gq-text);
     }
     .deviation .stat .k {
-      color: var(--label-3);
+      color: var(--gq-text-3);
       margin-right: 6px;
     }
 
     .recent {
-      background: linear-gradient(180deg, rgba(40,40,44,0.85) 0%, rgba(28,28,30,0.85) 100%);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border-radius: var(--radius);
-      border: 0.5px solid rgba(255,255,255,0.08);
-      box-shadow:
-        inset 0 1px 0 rgba(255,255,255,0.06),
-        0 12px 32px -8px rgba(0,0,0,0.4);
+      background: var(--gq-card);
+      border-radius: var(--gq-radius);
+      box-shadow: var(--gq-shadow-card);
       overflow: hidden;
     }
     .recent-head {
-      padding: 14px 18px 10px;
+      padding: 16px 20px 12px;
       display: flex; justify-content: space-between; align-items: baseline;
+      border-bottom: 1px solid var(--gq-line-3);
     }
     .recent-head .label {
-      font-family: var(--display);
-      font-size: 16px; font-weight: 600;
-      letter-spacing: -0.014em;
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-md); font-weight: 500;
+      color: var(--gq-text);
     }
     .recent-head .meta {
-      font-size: 11.5px; color: var(--label-3);
+      font-size: var(--gq-text-xs); color: var(--gq-text-3);
       font-feature-settings: "tnum";
     }
 
-    /* ----- pending placeholder ----- */
+    /* ---------- empty / pending ---------- */
     .empty {
       padding: 80px 20px;
       text-align: center;
     }
     .empty .pending {
       display: inline-block;
-      font-size: 11px;
+      font-size: var(--gq-text-xs);
       font-weight: 500;
-      color: var(--label-3);
+      color: var(--gq-mint-dark);
       letter-spacing: 0.04em;
-      text-transform: uppercase;
       padding: 4px 12px;
-      background: var(--surface-1);
-      border-radius: 999px;
+      background: var(--gq-mint-soft);
+      border-radius: var(--gq-radius-pill);
       margin-bottom: 14px;
     }
     .empty .title {
-      font-family: var(--display);
-      font-size: 22px; font-weight: 600;
-      letter-spacing: -0.018em;
-      color: var(--label);
+      font-family: var(--gq-sans);
+      font-size: var(--gq-text-lg); font-weight: 500;
+      color: var(--gq-text);
       margin-bottom: 6px;
     }
     .empty .hint {
-      font-size: 13px; color: var(--label-2);
-      letter-spacing: -0.005em;
+      font-size: var(--gq-text-sm); color: var(--gq-text-3);
     }
   </style>
 </head>
@@ -1260,16 +1185,16 @@
 
   const I = {
     Search: () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="7" cy="7" r="4.5"/><path d="m11 11 3 3"/></svg>,
-    Pause: () => <svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="3" width="2.5" height="10" rx="1"/><rect x="9.5" y="3" width="2.5" height="10" rx="1"/></svg>,
-    Play:  () => <svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 3v10l9-5z"/></svg>,
+    Pause: () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M5.5 3.5v9M10.5 3.5v9"/></svg>,
+    Play:  () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round"><path d="M5 3.5v9l8-4.5z"/></svg>,
     Filter:() => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 4h12M4.5 8h7M7 12h2"/></svg>,
     Plus:  () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M8 3v10M3 8h10"/></svg>,
     Back:  () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 4 6 8l4 4"/></svg>,
-    Channel: () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M3 3h10v10H3z" rx="2"/><path d="M3 6h10M6 6v7"/></svg>,
-    Bolt:    () => <svg viewBox="0 0 16 16" fill="currentColor"><path d="M9 1 3 9h4l-1 6 6-8H8z"/></svg>,
-    History: () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M3 8a5 5 0 1 0 1.4-3.5L3 6"/><path d="M3 3v3h3"/><path d="M8 5v3l2 1"/></svg>,
-    Cog:     () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4"><circle cx="8" cy="8" r="2"/><path d="M8 1.5v2M8 12.5v2M14.5 8h-2M3.5 8h-2"/></svg>,
-    Folder:  () => <svg viewBox="0 0 16 16" fill="currentColor" opacity="0.9"><path d="M2 4a1 1 0 0 1 1-1h3l1 1h6a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4z"/></svg>,
+    Channel: () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M2.5 6.5h11M6 6.5v6.5"/></svg>,
+    Bolt:    () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><path d="M9 1.5 3.5 9h4l-1 5.5L13 7H8.5z"/></svg>,
+    History: () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 8a5 5 0 1 0 1.4-3.5L3 6"/><path d="M3 3v3h3"/><path d="M8 5v3l2 1"/></svg>,
+    Cog:     () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="2"/><path d="M8 1.5v2M8 12.5v2M14.5 8h-2M3.5 8h-2M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4M12.6 12.6l-1.4-1.4M4.8 4.8 3.4 3.4"/></svg>,
+    Folder:  () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><path d="M2 4.5a1 1 0 0 1 1-1h3l1.2 1.2H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4.5z"/></svg>,
   };
 
   /* ---- pieces ---- */
@@ -1284,13 +1209,13 @@
     return (
       <div className="topbar">
         <div className="brand">
-          <div className="brand-mark">CS</div>
-          <span className="brand-name">Copy Sync</span>
-          <span className="brand-sub">v0.5 · live API</span>
+          <div className="brand-mark">银</div>
+          <span className="brand-name">银河量化</span>
+          <span className="brand-sub">Copy Sync · v0.5</span>
         </div>
         <button className="topbar-search" onClick={openPalette}>
           <I.Search/>
-          <span>Search leaders, symbols, run commands…</span>
+          <span>搜索 leader / 标的 / 命令…</span>
           <span className="spacer"/>
           <span className="kbd">⌘ K</span>
         </button>
@@ -1304,7 +1229,7 @@
             <span className="sep">·</span>
             <span>mirror</span><span className={`v ${acc !== "—" && parseFloat(acc) >= 95 ? "green" : ""}`}>{acc === "—" ? "—" : acc + "%"}</span>
           </span>
-          <button className="icon-btn" onClick={openTokenModal} title="API token / settings" aria-label="Open token settings">
+          <button className="icon-btn" onClick={openTokenModal} title="API token / 设置" aria-label="Open token settings">
             <I.Cog/>
           </button>
         </div>
@@ -1316,7 +1241,7 @@
     return (
       <aside className="side">
         <div className="side-section">
-          <div className="side-label">Accounts</div>
+          <div className="side-label">账户</div>
           {ACCOUNTS.map(a => (
             <div key={a.id}
                  className={`side-row ${a.id === activeAccount ? "active" : ""}`}
@@ -1328,30 +1253,30 @@
           ))}
           <div className="alloc-strip">
             <div className="alloc-bar">
-              <div style={{width: '54%', background: 'var(--blue)'}}/>
-              <div style={{width: '26%', background: 'var(--orange)'}}/>
-              <div style={{width: '15%', background: 'var(--purple)'}}/>
+              <div style={{width: '54%', background: 'var(--gq-mint)'}}/>
+              <div style={{width: '26%', background: 'var(--gq-mint-3)'}}/>
+              <div style={{width: '15%', background: 'var(--gq-mint-7)'}}/>
             </div>
-            <div className="alloc-line"><span>Σ allocated 95%</span><span>5% free</span></div>
+            <div className="alloc-line"><span>已配置 95%</span><span>5% 余额</span></div>
           </div>
         </div>
 
         <div className="side-section">
-          <div className="side-label">Library</div>
+          <div className="side-label">控制台</div>
           <div className={`side-row ${view==="channels"?"active":""}`} onClick={()=>setView("channels")}>
-            <I.Channel/><span className="name">Channels</span><span className="meta">{leaders.length}</span>
+            <I.Channel/><span className="name">交易员</span><span className="meta">{leaders.length}</span>
           </div>
           <div className={`side-row ${view==="live"?"active":""}`} onClick={()=>setView("live")}>
-            <I.Bolt/><span className="name">Live signals</span><span className="meta">142</span>
+            <I.Bolt/><span className="name">实时信号</span><span className="meta">142</span>
           </div>
           <div className={`side-row ${view==="history"?"active":""}`} onClick={()=>setView("history")}>
-            <I.History/><span className="name">History</span>
+            <I.History/><span className="name">历史记录</span>
           </div>
           <div className={`side-row ${view==="okx"?"active":""}`} onClick={()=>setView("okx")}>
-            <I.Folder/><span className="name">OKX leading</span><span className="meta">3</span>
+            <I.Folder/><span className="name">OKX 带单</span><span className="meta">3</span>
           </div>
           <div className={`side-row ${view==="config"?"active":""}`} onClick={()=>setView("config")}>
-            <I.Cog/><span className="name">Configuration</span>
+            <I.Cog/><span className="name">配置</span>
           </div>
         </div>
       </aside>
@@ -1365,7 +1290,7 @@
     const posCount = leader.positions_count != null ? leader.positions_count : (leader.positions ? leader.positions.length : 0);
     const sub = leader.state === "offline"
       ? `${SOURCE_LABEL[leader.source] || leader.source} · ${leader.offline_reason ? leader.offline_reason.replace(/_/g," ") : "offline"}`
-      : `${SOURCE_LABEL[leader.source] || leader.source} · ${posCount} positions · ${leader.signals_24h} signals · ${leader.poll}ms`;
+      : `${SOURCE_LABEL[leader.source] || leader.source} · ${posCount} 持仓 · ${leader.signals_24h} 信号 · ${leader.poll}ms`;
     return (
       <div className={`channel ${leader.state === "offline" ? "offline" : ""}`} onClick={() => onClick(leader.id)}>
         <div className={`ch-avatar ${leader.av}`}>
@@ -1399,44 +1324,46 @@
     return <>
       <div className="section-head">
         <div>
-          <h1>Channels</h1>
+          <h1>交易员</h1>
           <div className="sub">
-            <span className="green">{counts.live} streaming</span>
-            {counts.stale > 0   && <><span className="sep">·</span><span className="orange">{counts.stale} stale</span></>}
-            {counts.offline > 0 && <><span className="sep">·</span><span>{counts.offline} offline</span></>}
+            <span className="green">{counts.live} 在线</span>
+            {counts.stale > 0   && <><span className="sep">·</span><span className="orange">{counts.stale} 卡顿</span></>}
+            {counts.offline > 0 && <><span className="sep">·</span><span>{counts.offline} 离线</span></>}
             <span className="sep">·</span>
-            <span>across {Object.keys(leaders.reduce((a,l)=>{a[l.source]=1;return a;},{})).length} sources</span>
+            <span>跨 {Object.keys(leaders.reduce((a,l)=>{a[l.source]=1;return a;},{})).length} 个数据源</span>
           </div>
         </div>
         <div className="head-actions">
           <div className="segment">
             {["all","live","stale","offline"].map(k => (
               <button key={k} className={filter === k ? "active" : ""} onClick={()=>setFilter(k)}>
-                {k.charAt(0).toUpperCase() + k.slice(1)}
+                {k === "all" ? "全部" : k === "live" ? "在线" : k === "stale" ? "卡顿" : "离线"}
                 <span className="cnt">{counts[k]}</span>
               </button>
             ))}
           </div>
           <button className="btn-primary" onClick={openImport}>
-            <I.Plus/> Import signal
+            <I.Plus/> 导入信号源
           </button>
         </div>
       </div>
       <div className="channels-card">
-        {filtered.map(l => <ChannelRow key={l.id} leader={l} onClick={setSelected}/>)}
+        {filtered.length === 0
+          ? <div className="empty"><div className="hint">— 暂无数据</div></div>
+          : filtered.map(l => <ChannelRow key={l.id} leader={l} onClick={setSelected}/>)}
       </div>
     </>;
   }
 
   function ImportModal({ open, setOpen }) {
     const SRCS = [
-      { id: "binance",     name: "Binance · Copy Trading",  desc: "official binance.com lead-portfolio API",  status: "ready" },
-      { id: "binance-sm",  name: "Binance · Smart Money",   desc: "track hot wallets · on-chain + cex labels", status: "beta" },
-      { id: "okx",         name: "OKX · Trader",            desc: "okx.com social-trading public traders",     status: "ready" },
-      { id: "okx-lead",    name: "OKX · Leading positions", desc: "你已开通带单的账号 leading positions",        status: "ready" },
-      { id: "hyperliquid", name: "Hyperliquid · Address",   desc: "decentralized perp · paste any wallet 0x…", status: "beta" },
-      { id: "bicoin",      name: "BiCoin · 币 coin",         desc: "import a 币coin signal channel by share link", status: "beta" },
-      { id: "project",     name: "Custom · webhook / JSON", desc: "manual import for unsupported sources",      status: "soon" },
+      { id: "binance",     name: "Binance · 跟单",          desc: "binance.com 官方 lead-portfolio API",      status: "ready" },
+      { id: "binance-sm",  name: "Binance · 聪明钱",        desc: "追踪热门钱包 · on-chain + cex labels",      status: "beta" },
+      { id: "okx",         name: "OKX · Trader",            desc: "okx.com 社区跟单公开交易员",                status: "ready" },
+      { id: "okx-lead",    name: "OKX · 带单",              desc: "已开通带单的账号 leading positions",        status: "ready" },
+      { id: "hyperliquid", name: "Hyperliquid · 钱包",      desc: "去中心化合约 · 粘贴任意 0x… 地址",          status: "beta" },
+      { id: "bicoin",      name: "BiCoin · 币 coin",        desc: "通过分享链接导入 BiCoin 信号频道",          status: "beta" },
+      { id: "project",     name: "自定义 · webhook / JSON", desc: "其他来源的手动导入",                        status: "soon" },
     ];
     const SHORT = { binance:"BIN", "binance-sm":"SMRT", okx:"OKX", "okx-lead":"LEAD", hyperliquid:"HL", bicoin:"BiC", project:"·" };
     useEffect(() => {
@@ -1450,8 +1377,8 @@
       <div className="modal-bg" onClick={()=>setOpen(false)}>
         <div className="modal" onClick={e=>e.stopPropagation()}>
           <div className="modal-head">
-            <h3>Import a signal source</h3>
-            <div className="sub">choose where this leader's positions come from</div>
+            <h3>导入信号源</h3>
+            <div className="sub">选择该交易员的持仓数据来源</div>
           </div>
           <div className="modal-body">
             {SRCS.map(s => (
@@ -1466,7 +1393,7 @@
             ))}
           </div>
           <div className="modal-foot">
-            tip · paste any supported share-link directly into <span className="kbd">⌘ K</span> to skip this dialog
+            提示 · 直接在 <span className="kbd">⌘ K</span> 内粘贴分享链接可跳过此弹窗
           </div>
         </div>
       </div>
@@ -1487,10 +1414,10 @@
             <span className="lev">{s.leverage > 0 ? `×${s.leverage}` : "—"}</span>
           </div>
           <div className="signal-l2">
-            {s.mirror === "ok"   && <span className="ok">mirrored</span>}
-            {s.mirror === "skip" && <span className="skip">skipped</span>}
-            {s.mirror === "fail" && <span className="fail">failed</span>}
-            {s.note && <span style={{color: s.mirror === "fail" ? "var(--red)" : "var(--label-3)"}}>· {s.note.replace(/_/g," ")}</span>}
+            {s.mirror === "ok"   && <span className="ok">已跟单</span>}
+            {s.mirror === "skip" && <span className="skip">跳过</span>}
+            {s.mirror === "fail" && <span className="fail">失败</span>}
+            {s.note && <span style={{color: s.mirror === "fail" ? "var(--gq-down)" : "var(--gq-text-3)"}}>· {s.note.replace(/_/g," ")}</span>}
             {s.latency_ms > 0 && <span>{s.latency_ms}ms</span>}
           </div>
         </div>
@@ -1504,19 +1431,19 @@
       <aside className="rail">
         <div className="rail-head">
           <div>
-            <h2>Signals</h2>
-            <div className="meta">{paused ? "paused" : "live"} · {signals.length} in buffer</div>
+            <h2>信号流</h2>
+            <div className="meta">{paused ? "已暂停" : "实时"} · 缓冲 {signals.length} 条</div>
           </div>
           <div className="rail-actions">
-            <button className="icon-btn" onClick={()=>setPaused(p=>!p)} title={paused?"Resume":"Pause"}>
+            <button className="icon-btn" onClick={()=>setPaused(p=>!p)} title={paused?"继续":"暂停"}>
               {paused ? <I.Play/> : <I.Pause/>}
             </button>
-            <button className="icon-btn" title="Filter"><I.Filter/></button>
+            <button className="icon-btn" title="筛选"><I.Filter/></button>
           </div>
         </div>
         <div className="rail-list">
           {signals.length === 0
-            ? <div className="empty"><div className="hint">— waiting for signals…</div></div>
+            ? <div className="empty"><div className="hint">— 等待信号</div></div>
             : signals.map(s => <SignalRow key={s.id} s={s} leader={leadersById[s.leader]}/>)
           }
         </div>
@@ -1562,7 +1489,7 @@
     return (
       <div className="detail">
         <span className="detail-back" onClick={onBack}>
-          <I.Back/> Channels
+          <I.Back/> 返回交易员列表
         </span>
         <div className="detail-hero">
           <div className={`ch-avatar ${leader.av}`}>
@@ -1571,7 +1498,7 @@
           </div>
           <div>
             <div className="dh-name">{leader.name}</div>
-            <div className="dh-sub">{SOURCE_LABEL[leader.source] || leader.source} · {leader.signals_24h} signals last 24h · {leader.poll}ms poll</div>
+            <div className="dh-sub">{SOURCE_LABEL[leader.source] || leader.source} · 24h {leader.signals_24h} 信号 · {leader.poll}ms 轮询</div>
           </div>
           <div className="dh-stats">
             <div className="dh-stat"><div className="k">accuracy</div><div className="v green">{accuracy == null ? "—" : (accuracy*100).toFixed(1) + "%"}</div></div>
@@ -1580,27 +1507,27 @@
           </div>
         </div>
 
-        {syncErr && <div className="api-banner">Sync fetch failed: {syncErr}</div>}
+        {syncErr && <div className="api-banner">同步获取失败：{syncErr}</div>}
 
         <div className="compare">
           <div className="compare-card">
             <div className="compare-head">
-              <span className="label l">Leader · live</span>
-              <span className="badge">{leaderPosCount} positions</span>
+              <span className="label l">Leader · 实时</span>
+              <span className="badge">{leaderPosCount} 持仓</span>
             </div>
             <table className="pos-table">
-              <thead><tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Notional</th></tr></thead>
+              <thead><tr><th>标的</th><th>方向</th><th>数量</th><th>名义</th></tr></thead>
               <tbody>
                 {syncLoading
-                  ? <tr><td colSpan="4" style={{textAlign:'center',color:'var(--label-3)',padding:14}}>— loading…</td></tr>
+                  ? <tr><td colSpan="4" style={{textAlign:'center',color:'var(--gq-text-3)',padding:14}}>— 加载中</td></tr>
                   : rows.length === 0
-                    ? <tr><td colSpan="4" style={{textAlign:'center',color:'var(--label-3)',padding:14}}>— no open positions</td></tr>
+                    ? <tr><td colSpan="4" style={{textAlign:'center',color:'var(--gq-text-3)',padding:14}}>— 暂无持仓</td></tr>
                     : rows.map(p => (
                       <tr key={p.symbol + ":" + p.position_side}>
                         <td>{p.symbol.replace("USDT","")}<span className="symquote">USDT</span></td>
                         <td className={`r ${p.position_side === "LONG" ? "side-l" : "side-s"}`}>{p.position_side}</td>
                         <td className="r">{fmt(p.leader_qty, Math.abs(p.leader_qty) < 1 ? 4 : 2)}</td>
-                        <td className="r" style={{color:'var(--label-3)'}}>{fmt(p.leader_notional_usd, 0)}</td>
+                        <td className="r" style={{color:'var(--gq-text-3)'}}>{fmt(p.leader_notional_usd, 0)}</td>
                       </tr>
                     ))
                 }
@@ -1609,27 +1536,27 @@
           </div>
           <div className="compare-card">
             <div className="compare-head">
-              <span className="label r">My mirror · {leader.account_id || ACCOUNTS[0].name}</span>
-              <span className="badge">{myPosCount} positions</span>
+              <span className="label r">我的跟单 · {leader.account_id || ACCOUNTS[0].name}</span>
+              <span className="badge">{myPosCount} 持仓</span>
             </div>
             <table className="pos-table">
-              <thead><tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Δ%</th><th>Sync</th></tr></thead>
+              <thead><tr><th>标的</th><th>方向</th><th>数量</th><th>Δ%</th><th>同步</th></tr></thead>
               <tbody>
                 {syncLoading
-                  ? <tr><td colSpan="5" style={{textAlign:'center',color:'var(--label-3)',padding:14}}>— loading…</td></tr>
+                  ? <tr><td colSpan="5" style={{textAlign:'center',color:'var(--gq-text-3)',padding:14}}>— 加载中</td></tr>
                   : rows.length === 0
-                    ? <tr><td colSpan="5" style={{textAlign:'center',color:'var(--label-3)',padding:14}}>— nothing mirrored</td></tr>
+                    ? <tr><td colSpan="5" style={{textAlign:'center',color:'var(--gq-text-3)',padding:14}}>— 暂无跟单</td></tr>
                     : rows.map(p => {
                       const status = p.deviation_status || "ok";
                       const cls = status === "ok" ? "" : status === "drift" ? "diff" : "miss";
-                      const color = status === "ok" ? "var(--green)" : status === "drift" ? "var(--orange)" : "var(--red)";
+                      const color = status === "ok" ? "var(--gq-up)" : status === "drift" ? "var(--gq-warn)" : "var(--gq-down)";
                       const label = status === "ok" ? "in sync" : status;
                       return (
                         <tr key={p.symbol + ":" + p.position_side} className={cls}>
                           <td>{p.symbol.replace("USDT","")}<span className="symquote">USDT</span></td>
                           <td className={`r ${p.position_side === "LONG" ? "side-l" : "side-s"}`}>{Number(p.my_qty) !== 0 ? p.position_side : "—"}</td>
                           <td className="r">{Number(p.my_qty) !== 0 ? fmt(p.my_qty, Math.abs(p.my_qty) < 1 ? 4 : 2) : "—"}</td>
-                          <td className="r" style={{color:'var(--label-3)'}}>{p.deviation_pct == null ? "—" : p.deviation_pct.toFixed(2) + "%"}</td>
+                          <td className="r" style={{color:'var(--gq-text-3)'}}>{p.deviation_pct == null ? "—" : p.deviation_pct.toFixed(2) + "%"}</td>
                           <td className="r" style={{color}}>{label}</td>
                         </tr>
                       );
@@ -1641,7 +1568,7 @@
         </div>
 
         <div className="deviation">
-          <span className="label">Mirror is currently <em style={{color: drift<0.01?"var(--green)":drift<0.02?"var(--orange)":"var(--red)"}}>{drift<0.005?"in sync":drift<0.01?"drifting slightly":"out of sync"}</em>.</span>
+          <span className="label">当前跟单状态：<em style={{color: drift<0.01?"var(--gq-up)":drift<0.02?"var(--gq-warn)":"var(--gq-down)"}}>{drift<0.005?"完全同步":drift<0.01?"轻微偏离":"明显偏离"}</em></span>
           <span className="stat"><span className="k">drift</span>{(drift*100).toFixed(2)}%</span>
           {summary && <>
             <span className="stat"><span className="k">in sync</span>{summary.in_sync}</span>
@@ -1654,12 +1581,12 @@
 
         <div className="recent">
           <div className="recent-head">
-            <span className="label">Recent activity</span>
-            <span className="meta">{leaderSignals.length} of {leader.signals_24h}</span>
+            <span className="label">近期信号</span>
+            <span className="meta">{leaderSignals.length} / {leader.signals_24h}</span>
           </div>
           <div style={{padding:'4px 8px 12px'}}>
             {leaderSignals.length === 0
-              ? <div className="empty"><div className="hint">— no signals yet from this leader</div></div>
+              ? <div className="empty"><div className="hint">— 该交易员暂无信号</div></div>
               : leaderSignals.map(s => <SignalRow key={s.id} s={s} leader={leader}/>)
             }
           </div>
@@ -1680,13 +1607,13 @@
       const out = [];
       const ql = q.trim().toLowerCase();
       const cmds = [
-        { name:"Import signal source…", hint:":import",  action: openImport },
-        { name:"Pause signal feed",     hint:"P" },
-        { name:"Replay last 20 signals",hint:"R" },
-        { name:"Diff a leader…",        hint:":diff" },
-        { name:"Switch account",        hint:":acct" },
+        { name:"导入信号源…",       hint:":import",  action: openImport },
+        { name:"暂停信号流",         hint:"P" },
+        { name:"重放最近 20 条信号", hint:"R" },
+        { name:"对比 leader…",       hint:":diff" },
+        { name:"切换账户",            hint:":acct" },
       ].filter(c => !ql || c.name.toLowerCase().includes(ql) || c.hint.toLowerCase().includes(ql));
-      out.push({ section:"Commands", items: cmds });
+      out.push({ section:"命令", items: cmds });
       const lds = leaders.filter(l =>
         !ql || l.name.toLowerCase().includes(ql) || (l.source && l.source.includes(ql))
       ).map(l => ({
@@ -1694,7 +1621,7 @@
         hint: SOURCE_LABEL[l.source],
         action: () => { setSelected(l.id); setView("channels"); setOpen(false); },
       }));
-      out.push({ section:"Leaders", items: lds });
+      out.push({ section:"交易员", items: lds });
       return out.filter(g => g.items.length);
     }, [q, leaders]);
 
@@ -1719,12 +1646,12 @@
           <div className="palette-input">
             <I.Search/>
             <input ref={ref} value={q} onChange={e=>setQ(e.target.value)}
-                   placeholder="Search leaders, run commands…"/>
+                   placeholder="搜索 leader / 执行命令…"/>
             <span className="kbd">esc</span>
           </div>
           <div className="palette-list">
             {items.length === 0
-              ? <div className="empty"><div className="hint">— no matches</div></div>
+              ? <div className="empty"><div className="hint">— 没有匹配项</div></div>
               : items.map(g => (
                 <div key={g.section}>
                   <div className="palette-section">{g.section}</div>
@@ -1735,7 +1662,7 @@
                            onMouseEnter={()=>setSel(me)}
                            onClick={()=>it.action?.()}>
                         <span className="icon-slot">
-                          {g.section === "Leaders" ? <I.Channel/> : <I.Bolt/>}
+                          {g.section === "交易员" ? <I.Channel/> : <I.Bolt/>}
                         </span>
                         <span className="pname">{it.name}</span>
                         <span className="phint">{it.hint}</span>
@@ -1747,10 +1674,10 @@
             }
           </div>
           <div className="palette-foot">
-            <span><span className="kbd">↑</span> <span className="kbd">↓</span> navigate</span>
-            <span><span className="kbd">↵</span> select</span>
-            <span><span className="kbd">esc</span> close</span>
-            <span style={{marginLeft:'auto'}}>{flat.length} results</span>
+            <span><span className="kbd">↑</span> <span className="kbd">↓</span> 选择</span>
+            <span><span className="kbd">↵</span> 确认</span>
+            <span><span className="kbd">esc</span> 关闭</span>
+            <span style={{marginLeft:'auto'}}>{flat.length} 项</span>
           </div>
         </div>
       </div>
@@ -1760,7 +1687,7 @@
   function Pending({ title, hint }) {
     return (
       <div className="empty">
-        <span className="pending">pending</span>
+        <span className="pending">敬请期待</span>
         <div className="title">{title}</div>
         <div className="hint">{hint}</div>
       </div>
@@ -1798,15 +1725,15 @@
       <div className="modal-bg" onClick={() => { if (dismissable) setOpen(false); }}>
         <div className="modal" onClick={(e) => e.stopPropagation()}>
           <div className="modal-head">
-            <h3>Connect to your Copy Sync server</h3>
-            <div className="sub">Paste the API token shown in the server's first-boot stdout, or read it from <code>runtime/api_token.txt</code> on the server.</div>
+            <h3>连接到你的 Copy Sync 服务器</h3>
+            <div className="sub">粘贴服务器首次启动 stdout 中的 API token，或从服务器上的 <code>runtime/api_token.txt</code> 文件读取。</div>
           </div>
           <div className="modal-body token-body">
             <input
               ref={inputRef}
               type="password"
               className="token-input"
-              placeholder="paste token here"
+              placeholder="在此粘贴 token"
               value={val}
               onChange={(e) => setVal(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") onConnect(); }}
@@ -1815,14 +1742,14 @@
             />
           </div>
           <div className="modal-foot">
-            <button className="link-btn" onClick={onClear} disabled={!getToken() && !val} title="Clear stored token">
-              Clear stored
+            <button className="link-btn" onClick={onClear} disabled={!getToken() && !val} title="清除已存 token">
+              清除
             </button>
             <button className="link-btn" onClick={() => setOpen(false)} disabled={!dismissable}>
-              Cancel
+              取消
             </button>
             <button className="btn-primary" onClick={onConnect} disabled={!canConnect}>
-              Connect
+              连接
             </button>
           </div>
         </div>
@@ -1926,9 +1853,9 @@
     // banner copy
     let errorBanner = null;
     if (bootError === "auth") {
-      errorBanner = "Session expired. Click settings to update token.";
+      errorBanner = "会话已过期，请点击设置更新 token。";
     } else if (bootError) {
-      errorBanner = `Backend unreachable: ${bootError}. Showing cached data.`;
+      errorBanner = `后端不可达：${bootError}。当前显示缓存数据。`;
     }
 
     useEffect(() => {
@@ -1962,10 +1889,10 @@
                                      filter={filter} setFilter={setFilter}
                                      openImport={()=>setImportOpen(true)}/>
             )}
-            {view === "live" && <Pending title="Live signals" hint="Full-screen signal terminal · pending"/>}
-            {view === "history" && <Pending title="History" hint="Time-range explorer · pending"/>}
-            {view === "okx" && <Pending title="OKX leading" hint="OKX copytrading subpanel · pending"/>}
-            {view === "config" && <Pending title="Configuration" hint="API token · accounts · allocation · pending"/>}
+            {view === "live" && <Pending title="实时信号" hint="全屏信号终端 · 敬请期待"/>}
+            {view === "history" && <Pending title="历史记录" hint="时间区间检索 · 敬请期待"/>}
+            {view === "okx" && <Pending title="OKX 带单" hint="OKX 带单子页面 · 敬请期待"/>}
+            {view === "config" && <Pending title="配置" hint="API token · 账户 · 资金分配 · 敬请期待"/>}
           </main>
           <Rail signals={signals} paused={paused} setPaused={setPaused} leadersById={leadersById}/>
         </div>
