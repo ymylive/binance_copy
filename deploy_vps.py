@@ -10,9 +10,40 @@ from pathlib import Path
 import paramiko
 
 
-EXCLUDE_DIRS = {".git", ".venv", "venv", "__pycache__", ".chrome-debug", ".chrome-debug-visible"}
+EXCLUDE_DIRS = {
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".chrome-debug",
+    ".chrome-debug-visible",
+    "_design",  # captured screenshots / playwright recon — not needed in prod
+    ".worktrees",
+    ".pytest_cache",
+    "node_modules",
+}
 EXCLUDE_SUFFIXES = {".pyc"}
 EXCLUDE_FILES = {".DS_Store", "config.json", "trade_config.json", "cookies.json"}
+
+# Path-prefix exclusions (matched against the project-relative POSIX path).
+# Mutable runtime state we never want to overwrite production data with — the
+# server is the source of truth for these. Operator seed files (admin_seed,
+# admin_emails, plans, news) are NOT in this list and DO get shipped so first
+# deploy bootstraps them.
+EXCLUDE_PREFIXES = (
+    "data/",
+    "runtime/api_token.txt",
+    "runtime/portal/users.json",
+    "runtime/portal/sessions.json",
+    "runtime/portal/login_attempts.json",
+    "runtime/portal/login_history.json",
+    "runtime/portal/funds.json",
+    "runtime/portal/businesses.json",
+    "runtime/portal/withdraw_addresses.json",
+    "runtime/portal/pending_codes.json",
+    "runtime/portal/referrals.json",
+    "runtime/portal/equity_snapshots/",
+)
 
 ACME_HOME = "/opt/acme.sh"
 ACME_SRC_DIR = "/opt/acme.sh-src"
@@ -31,6 +62,9 @@ def iter_local_files(root: Path) -> list[Path]:
         if path.name in EXCLUDE_FILES:
             continue
         if path.suffix in EXCLUDE_SUFFIXES:
+            continue
+        rel = path.relative_to(root).as_posix()
+        if any(rel == p or rel.startswith(p) for p in EXCLUDE_PREFIXES):
             continue
         files.append(path)
     return files
@@ -429,6 +463,15 @@ def main() -> int:
         action="store_true",
         help="Use Let's Encrypt staging environment (acme.sh)",
     )
+    parser.add_argument(
+        "--pip-index-url",
+        default="",
+        help=(
+            "Override the PyPI index URL used during remote pip install. "
+            "Defaults to a public mirror with --trusted-host applied "
+            "automatically based on the URL."
+        ),
+    )
     args = parser.parse_args()
 
     local_root = Path(args.project_dir).resolve()
@@ -509,13 +552,22 @@ def main() -> int:
         venv_path = posixpath.join(remote_root, "venv")
         if not args.skip_pip:
             run_remote(transport, f"python3 -m venv {venv_path}")
+            # Use a public mirror with explicit trusted-host so the install
+            # works on VPSes whose default index (e.g. mirrors.tencentyun.com)
+            # cannot resolve from inside the VPC.
+            pip_mirror = args.pip_index_url or "https://pypi.tuna.tsinghua.edu.cn/simple"
+            from urllib.parse import urlparse
+            mirror_host = urlparse(pip_mirror).hostname or ""
+            mirror_args = f"-i {pip_mirror}"
+            if mirror_host:
+                mirror_args += f" --trusted-host {mirror_host}"
             run_remote(
                 transport,
-                f"{venv_path}/bin/pip install --upgrade pip",
+                f"{venv_path}/bin/pip install --upgrade pip {mirror_args}",
             )
             run_remote(
                 transport,
-                f"{venv_path}/bin/pip install -r {remote_root}/requirements.txt",
+                f"{venv_path}/bin/pip install -r {remote_root}/requirements.txt {mirror_args}",
             )
 
         service_content = f"""[Unit]
