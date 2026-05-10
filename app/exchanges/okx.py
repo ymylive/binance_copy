@@ -102,64 +102,117 @@ class OKXSession:
         positions = []
         for item in data:
             inst_id = item.get("instId", "")
-            sub_pos = float(item.get("subPos", 0))
+            try:
+                sub_pos = float(item.get("subPos", 0))
+            except (TypeError, ValueError):
+                sub_pos = 0.0
 
             if sub_pos == 0:
                 continue
 
-            # 符号转换: BTC-USDT-SWAP -> BTCUSDT
+            # Prefer the upstream `posSide` (long/short) when present — more
+            # reliable than inferring from the sign of subPos, since OKX
+            # net-mode and isolated-margin can return signed quantities with
+            # an explicit posSide that disagrees with the sign convention.
+            raw_side = (item.get("posSide") or "").lower()
+            if raw_side == "long":
+                position_side = "LONG"
+            elif raw_side == "short":
+                position_side = "SHORT"
+            else:
+                position_side = "LONG" if sub_pos > 0 else "SHORT"
+            # `side` mirrors the Binance schema (BUY/SELL) so downstream
+            # event-generator and notifier templates can read either field
+            # without an OKX-specific branch.
+            side = "BUY" if position_side == "LONG" else "SELL"
+
             symbol = self._okx_to_binance_symbol(inst_id)
 
             positions.append({
                 "symbol": symbol,
-                "instId": inst_id,  # 保留原始OKX符号
-                "positionSide": "LONG" if sub_pos > 0 else "SHORT",
+                "instId": inst_id,
+                "side": side,
+                "positionSide": position_side,
                 "positionAmt": sub_pos,
                 "positionAmount": abs(sub_pos),
                 "entryPrice": float(item.get("openAvgPx", 0)),
                 "markPrice": float(item.get("markPx", 0)),
                 "leverage": int(item.get("lever", 1)),
                 "unrealizedProfit": float(item.get("upl", 0)),
+                "uplRatio": float(item.get("uplRatio", 0)),
                 "margin": float(item.get("margin", 0)),
-                "mgnMode": item.get("mgnMode", "cross"),  # cross/isolated
+                "mgnMode": item.get("mgnMode", "cross"),
                 "subPosId": item.get("subPosId", ""),
+                "openTime": int(item.get("openTime", 0) or 0),
             })
 
         return positions
 
     async def fetch_detail(self, unique_code: str) -> Dict[str, Any]:
-        """
-        获取交易员详情
+        """Resolve a single lead trader's stats by uniqueCode.
 
-        API: GET /api/v5/copytrading/public-lead-traders
+        OKX's `/public-lead-traders` endpoint ignores the `uniqueCode`
+        query param and always returns the full leaderboard, so we scan the
+        leaderboard ranks client-side. Field names follow what OKX actually
+        ships today: `nickName`, `aum`, `pnlRatio`, `copyTraderNum`,
+        `accCopyTraderNum`, `leadDays`, `winRatio` (when available).
         """
         url = f"{self.api_base}/api/v5/copytrading/public-lead-traders"
-        params = {"uniqueCode": unique_code}
+        params = {"instType": "SWAP", "sortType": "overview"}
         timeout = self.request_timeout_ms / 1000.0
 
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.get(url, params=params)
-                data = resp.json()
-
-            if data.get("code") == "0":
-                traders = data.get("data", [])
-                if traders:
-                    trader = traders[0]
-                    return {
-                        "success": True,
-                        "nickName": trader.get("nickName", ""),
-                        "uniqueCode": trader.get("uniqueCode", ""),
-                        "margin": float(trader.get("margin", 0)),
-                        "profitRate": float(trader.get("profitRate", 0)),
-                        "winRate": float(trader.get("winRate", 0)),
-                        "raw": trader,
-                    }
-                return {"success": False, "error": "Trader not found"}
-            else:
-                return {"success": False, "error": data.get("msg", "Unknown error")}
+                payload = resp.json()
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+        if payload.get("code") != "0":
+            return {"success": False, "error": payload.get("msg", "Unknown error")}
+
+        ranks = (((payload.get("data") or [{}])[0]).get("ranks") or [])
+        target = next(
+            (r for r in ranks if (r.get("uniqueCode") or "").upper() == unique_code.upper()),
+            None,
+        )
+        if target is None:
+            return {
+                "success": False,
+                "error": "Trader not found in current overview leaderboard",
+                "leaderboardSize": len(ranks),
+            }
+
+        def _f(name: str, default: float = 0.0) -> float:
+            try:
+                return float(target.get(name, default) or default)
+            except (TypeError, ValueError):
+                return default
+
+        def _i(name: str, default: int = 0) -> int:
+            try:
+                return int(target.get(name, default) or default)
+            except (TypeError, ValueError):
+                return default
+
+        # OKX renamed `winRate` → `winRatio` at some point; surface both keys
+        # for backward compatibility with consumers that may key off either.
+        win_ratio = _f("winRatio")
+        return {
+            "success": True,
+            "nickName": target.get("nickName") or "",
+            "uniqueCode": target.get("uniqueCode") or unique_code,
+            "aum": _f("aum"),
+            "margin": _f("aum"),  # legacy alias
+            "pnlRatio": _f("pnlRatio"),
+            "profitRate": _f("pnlRatio"),  # legacy alias
+            "winRatio": win_ratio,
+            "winRate": win_ratio,  # legacy alias
+            "copyTraderNum": _i("copyTraderNum"),
+            "accCopyTraderNum": _i("accCopyTraderNum"),
+            "leadDays": _i("leadDays"),
+            "raw": target,
+        }
 
     @staticmethod
     def _okx_to_binance_symbol(inst_id: str) -> str:
