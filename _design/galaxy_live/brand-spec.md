@@ -1,6 +1,11 @@
-# 银河量化 Galaxy Quantitative · Brand Spec
+# korincoin · Brand Spec（视觉仿照 原始视觉参考（已隐去））
+
+> **本项目品牌**：korincoin
+> **仿照对象**：原始视觉参考（已隐去）（原始视觉参考站点（已隐去））
+> 本文档记录从仿照对象采集到的视觉 token、截图与 Element Plus 主题表，供 korincoin 控制台复用。下文出现的"原始视觉参考 / （已隐去） / 原始视觉参考站点（已隐去）"均指**参考来源**，并非本项目自身名称。
+
 > 采集日期：2026-05-08
-> 来源：browser-use 登录 galaxyquantitative.com 实拍 6 页 + bundled CSS `/assets/index-BVhBjcNK.css`（428KB）解析
+> 来源：browser-use 登录 原始视觉参考站点（已隐去） 实拍 6 页 + bundled CSS `/assets/index-BVhBjcNK.css`（428KB）解析
 > 资产完整度：完整（6 屏截图 + 同名 HTML + computed CSS + 解析后的 Element Plus token 表）
 > 技术底座：Vue 3 SPA + Element Plus（`el-aside / el-header / el-menu / el-table / el-alert / el-switch / el-tabs`），通过 `--el-color-primary: #3acbbe` 等 CSS 变量覆盖默认主题。
 
@@ -9,7 +14,7 @@
 ## 🎯 核心资产
 
 ### Logo
-- 描述：**圆形薄荷绿底 + 白色简笔图标 + "银河量化 / GalaxyQuant"** 中英双语，中文衬体（宋体）+ 英文小号衬体；marker 与文字水平排列。
+- 描述：**圆形薄荷绿底 + 白色简笔图标 + （已隐去 brand 字样）** 中英双语，中文衬体（宋体）+ 英文小号衬体；marker 与文字水平排列。
 - 文件：`/Users/cornna/project/binance_copy/_design/galaxy_live/bu-1-dashboard.png` 左上角（top-left 0..120 × 0..56 区域可裁剪）。
 - 尺寸：圆形 marker 28×28，整体 lockup 约 130×40。
 - 说明：在所有页面都呈现于 sidebar 顶部白底区，不在深色背景出现。
@@ -83,7 +88,7 @@
               "PingFang SC", monospace;
 ```
 
-来源：`--el-font-family` 直接来自 bundle；display 仅供 logo / 重点页面标题（Songti / 思源宋）。**不要使用 Inter / Roboto / Poppins**——银河整站没有 Latin webfont。
+来源：`--el-font-family` 直接来自 bundle；display 仅供 logo / 重点页面标题（Songti / 思源宋）。**不要使用 Inter / Roboto / Poppins**——参考对象整站没有 Latin webfont。
 
 字号梯度（从 `--el-font-size-*` 实测）：
 - `--gq-text-xl: 20px`（页面 H1）
@@ -196,10 +201,10 @@
 
 - **不要紫色渐变**（`#7a25da` 仅 mobile menu 装饰，不许进主线）。
 - **不要 emoji 图标**：所有图标使用单色线性 svg（stroke 1.5–2px / size 16–20）。
-- **不要给卡片加左 border accent**——银河没有这做法。
+- **不要给卡片加左 border accent**——参考对象没有这做法。
 - **不要画 SVG 人脸**当 placeholder。
 - **不要 Inter / Roboto / Poppins**——遵循中文优先 stack。
-- **不要黑暗模式**——银河 console 仅 light。
+- **不要黑暗模式**——参考对象 console 仅 light。
 - **不要给主按钮加大 box-shadow halo**（仅 hover 用 mint 4px alpha 阴影，绝不超过 16px blur）。
 - **不要使用 `border-radius > 12`** 在内容卡——只有 pill / 头像 / SVIP 徽是 999。
 

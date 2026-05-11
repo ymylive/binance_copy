@@ -54,14 +54,14 @@ DEFAULT_NEWS: List[Dict[str, Any]] = [
         "title": "市场观察：BTC在关键阻力位震荡",
         "summary": "近期主流币种成交量放大，机构资金流入趋势延续，量化策略表现分化。",
         "timestamp": 1714867200000,
-        "source": "Galaxy Quant Insights",
+        "source": "korincoin Insights",
     },
     {
         "id": "n2",
         "title": "量化策略周报：动量因子表现回暖",
         "summary": "本周横截面动量因子在永续合约市场中显著跑赢均值回归，多头敞口建议小幅上调。",
         "timestamp": 1714780800000,
-        "source": "Galaxy Quant Insights",
+        "source": "korincoin Insights",
     },
     {
         "id": "n3",
@@ -86,7 +86,7 @@ DEFAULT_NEWS: List[Dict[str, Any]] = [
     },
 ]
 
-DEMO_EMAIL = "demo@galaxyquantitative.local"
+DEMO_EMAIL = "demo@korincoin.local"
 DEMO_PASSWORD = "demo1234"
 DEMO_USERNAME = "demo"
 
@@ -1117,7 +1117,7 @@ class PortalStore:
         if not username or not password:
             return
         if not email:
-            email = f"{username.lower()}@galaxyquantitative.local"
+            email = f"{username.lower()}@korincoin.local"
         with self._lock:
             users = self._read(USERS_FILE, [])
             existing = next(

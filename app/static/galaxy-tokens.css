@@ -5,46 +5,49 @@
    只 link 此文件即可获得银河视觉。无业务文字，无依赖。
    ============================================================================= */
 
+
+@import url("./claude-base.css");
+
 /* -----------------------------------------------------------------------------
    1. TOKENS
    ----------------------------------------------------------------------------- */
 :root {
   /* — Brand mint family — */
-  --gq-mint:          #3ACBBE;   /* primary */
-  --gq-mint-dark:     #23A599;   /* hover / pressed / 多头文字 */
-  --gq-mint-2:        #2E9992;   /* deeper, dark-2 */
-  --gq-mint-3:        #62DAD2;   /* light-3 (active border) */
-  --gq-mint-5:        #8BE3DD;   /* light-5 */
-  --gq-mint-7:        #B4ECE8;   /* light-7 */
-  --gq-mint-8:        #C9F1EE;   /* light-8 */
-  --gq-mint-soft:     #DEF6F4;   /* light-9, hover bg */
-  --gq-mint-tint:     #F9FFFF;   /* 多头 pill bg */
+  --gq-mint:          #D97757;   /* primary */
+  --gq-mint-dark:     #B85A3F;   /* hover / pressed / 多头文字 */
+  --gq-mint-2:        #C76A4F;   /* deeper, dark-2 */
+  --gq-mint-3:        #E08D6E;   /* light-3 (active border) */
+  --gq-mint-5:        #EBA98C;   /* light-5 */
+  --gq-mint-7:        #F1C7B0;   /* light-7 */
+  --gq-mint-8:        #F5D7C3;   /* light-8 */
+  --gq-mint-soft:     #F8E5D8;   /* light-9, hover bg */
+  --gq-mint-tint:     #FDF5EE;   /* 多头 pill bg */
 
   /* — Surfaces — */
-  --gq-bg:            #F8F9FA;   /* page bg */
-  --gq-card:          #FFFFFF;   /* card bg */
-  --gq-fill-light:    #F5F7FA;   /* table head / row hover */
-  --gq-fill:          #F0F2F5;   /* heavier fill */
-  --gq-fill-extra:    #FAFCFF;   /* lightest fill */
+  --gq-bg:            #F0EEE6;   /* page bg */
+  --gq-card:          #FAF9F5;   /* card bg */
+  --gq-fill-light:    #ECE7DA;   /* table head / row hover */
+  --gq-fill:          #E8E0CE;   /* heavier fill */
+  --gq-fill-extra:    #F8F5EC;   /* lightest fill */
 
   /* — Text — */
-  --gq-text:          #344054;   /* primary copy */
-  --gq-text-2:        #606266;   /* regular */
-  --gq-text-3:        #8B929C;   /* secondary */
-  --gq-text-4:        #A8ABB2;   /* placeholder */
+  --gq-text:          #3D3D3A;   /* primary copy */
+  --gq-text-2:        #5C5C57;   /* regular */
+  --gq-text-3:        #87867F;   /* secondary */
+  --gq-text-4:        #B0AEA5;   /* placeholder */
   --gq-text-disabled: #C0C4CC;
 
   /* — Lines / borders — */
-  --gq-line:          #DCDFE6;
-  --gq-line-2:        #E4E7ED;
-  --gq-line-3:        #EBEEF5;   /* table row separator */
+  --gq-line:          #DBD7C7;
+  --gq-line-2:        #E2DECD;
+  --gq-line-3:        #ECE7DA;   /* table row separator */
 
   /* — Status / market — */
-  --gq-up:            #23A599;   /* 涨 / 多头 文字 */
-  --gq-up-soft:       #F9FFFF;   /* 多头 pill bg */
-  --gq-down:          #EB4A61;   /* 跌 / 空头 文字 */
-  --gq-down-soft:     #FEF0F0;   /* 空头 pill bg (danger-light-9) */
-  --gq-down-soft-2:   #FEEAE0;   /* alt warm tint */
+  --gq-up:            #6B7C3A;   /* 涨 / 多头 文字 */
+  --gq-up-soft:       #FDF5EE;   /* 多头 pill bg */
+  --gq-down:          #B8553B;   /* 跌 / 空头 文字 */
+  --gq-down-soft:     #F5E6E0;   /* 空头 pill bg (danger-light-9) */
+  --gq-down-soft-2:   #F5E6E0;   /* alt warm tint */
 
   /* — Warning / banner — */
   --gq-warn:          #E6A23C;
@@ -63,11 +66,9 @@
   --gq-link:          #718EBF;
 
   /* — Type — */
-  --gq-sans: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB",
-             "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
-  --gq-display: "Songti SC", "STSong", "Noto Serif SC", "PingFang SC", serif;
-  --gq-mono: "SF Mono", ui-monospace, "JetBrains Mono", "Menlo",
-             "PingFang SC", monospace;
+  --gq-sans: "Inter", -apple-system, "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  --gq-display: "Source Serif 4", "Tiempos", "Songti SC", "STSong", serif;
+  --gq-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
 
   --gq-text-xl:   20px;
   --gq-text-lg:   18px;

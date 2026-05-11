@@ -88,7 +88,7 @@ _LABELS: Dict[str, Dict[str, str]] = {
         "field_leader": "交易员",
         "field_ex":     "交易所",
         "from_admin":   "来源: 管理员注入",
-        "test_title":   "银河量化 · 通道测试",
+        "test_title":   "korincoin · 通道测试",
         "test_body":    "若收到此消息,表示通道已配置就绪。",
         "btn_view":     "🔍 查看详情",
         "btn_chart":    "📈 走势",
@@ -110,7 +110,7 @@ _LABELS: Dict[str, Dict[str, str]] = {
         "field_leader": "Leader",
         "field_ex":     "Exchange",
         "from_admin":   "Source: admin inject",
-        "test_title":   "Galaxy Quant · channel probe",
+        "test_title":   "korincoin · channel probe",
         "test_body":    "If you see this, the channel is correctly wired.",
         "btn_view":     "🔍 Details",
         "btn_chart":    "📈 Chart",
@@ -290,7 +290,7 @@ class TelegramNotifier:
         # Discord webhook accepts an embed list; we send one rich embed
         # whose description carries the same Markdown body.
         body = {
-            "username": "Galaxy Quant",
+            "username": "korincoin",
             "embeds": [
                 {
                     "title": title,

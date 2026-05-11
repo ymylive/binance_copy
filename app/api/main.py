@@ -33,6 +33,7 @@ from ..services.config_store import ConfigStore
 from ..services.state import AppState
 
 INDEX_PATH = STATIC_DIR / "index.html"
+CONSOLE_PATH = STATIC_DIR / "console.html"
 FAVICON_PATH = STATIC_DIR / "favicon.svg"
 LANDING_PATH = STATIC_DIR / "landing.html"
 REFERRAL_PATH = STATIC_DIR / "referral.html"
@@ -189,7 +190,7 @@ def _resolve_cors_origins() -> List[str]:
 
 # Disable OpenAPI/docs in production to avoid leaking endpoint surface.
 app = FastAPI(
-    title="Binance Copy Sync",
+    title="Binance korincoin",
     version="0.1.0",
     docs_url=None,
     redoc_url=None,
@@ -446,7 +447,7 @@ async def index() -> FileResponse:
 
 @app.get("/console")
 async def console() -> FileResponse:
-    return FileResponse(INDEX_PATH)
+    return FileResponse(CONSOLE_PATH)
 
 
 @app.get("/referral")
@@ -502,7 +503,7 @@ async def sign_landing(code: str = "") -> Any:
     safe_code = "".join(ch for ch in (code or "")[:32] if ch.isalnum() or ch in "-_")
     html = (
         "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">"
-        "<title>正在跳转 · 银河量化</title>"
+        "<title>正在跳转 · korincoin</title>"
         "<meta http-equiv=\"refresh\" content=\"0; url=/register?code="
         + safe_code
         + "\"></head><body style=\"background:#050608;color:#f4f6f8;"
@@ -1109,7 +1110,7 @@ async def list_projects() -> List[Dict[str, object]]:
     for project in state.list_projects():
         payload = project.model_dump()
         payload["project_id"] = state.project_key(project)
-        # === Galaxy trader-card extension ===
+        # === korincoin trader-card extension ===
         # Surface display fields + sparkline so the /trader cards in
         # kzt.html can render without a second round-trip. The underlying
         # ProjectConfig schema is NOT changed; everything here is derived

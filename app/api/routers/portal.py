@@ -1285,7 +1285,7 @@ async def bind_business_api_key(
     # the executor can fill in the per-exchange default at runtime.
     new_account = TradingAccount(
         account_id=new_account_id,
-        name=(payload.alias or "GalaxyAccount").strip() or "GalaxyAccount",
+        name=(payload.alias or "korincoinAccount").strip() or "korincoinAccount",
         exchange=exchange,
         enabled=False,
         base_url="",

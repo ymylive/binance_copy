@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=1440" />
-  <title>Copy Sync · 银河量化控制台</title>
-  <link rel="stylesheet" href="galaxy-tokens.css" />
+  <title>korincoin 控制台</title>
+  <link rel="stylesheet" href="/static/galaxy-tokens.css?v=v6-claude-grid" />
   <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
   <style>
     /* =====================================================================
-       Copy Sync · Console
-       银河量化 (Galaxy Quant) light theme — maps the React app's existing
+       korincoin · Console
+       Claude handdrawn light theme — maps the React app's existing
        class names onto galaxy-tokens.css palette without touching JSX.
        Source of truth for tokens:  galaxy-tokens.css
        Brand spec:                  _design/galaxy_live/brand-spec.md
@@ -1209,9 +1209,9 @@
     return (
       <div className="topbar">
         <div className="brand">
-          <div className="brand-mark">银</div>
-          <span className="brand-name">银河量化</span>
-          <span className="brand-sub">Copy Sync · v0.5</span>
+          <div className="brand-mark">k</div>
+          <span className="brand-name">korincoin</span>
+          <span className="brand-sub">v0.5</span>
         </div>
         <button className="topbar-search" onClick={openPalette}>
           <I.Search/>
@@ -1725,7 +1725,7 @@
       <div className="modal-bg" onClick={() => { if (dismissable) setOpen(false); }}>
         <div className="modal" onClick={(e) => e.stopPropagation()}>
           <div className="modal-head">
-            <h3>连接到你的 Copy Sync 服务器</h3>
+            <h3>连接到你的 korincoin 服务器</h3>
             <div className="sub">粘贴服务器首次启动 stdout 中的 API token，或从服务器上的 <code>runtime/api_token.txt</code> 文件读取。</div>
           </div>
           <div className="modal-body token-body">

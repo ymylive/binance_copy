@@ -1,0 +1,177 @@
+/* =============================================================================
+   korincoin · 全局基础样式
+   - tokens (--c-*)：色板、字型、几何、间距
+   - dark mode：prefers-color-scheme 自动 + [data-theme="dark"] 手动覆盖
+   - body：奶油底 + 极淡方格背景 + grain noise 纹理
+   - 字体：Source Serif 4 / Inter / JetBrains Mono / Caveat
+   - 动画 keyframes：c-fade-up, c-draw, c-grow-in, c-pulse, c-float
+   - 移动端 utilities：< 768px sidebar 折顶部 / KPI 单列
+   被 galaxy-tokens.css 和 portal.css @import 使用。
+   ============================================================================= */
+
+@import url("https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
+
+:root {
+  --c-paper: #F0EEE6;
+  --c-paper-card: #E8E6DC;
+  --c-paper-soft: #FAF9F5;
+  --c-ink: #3D3D3A;
+  --c-ink-soft: #87867F;
+  --c-ink-faint: #B0AEA5;
+  --c-line: #DBD7C7;
+  --c-line-strong: #C0BCAA;
+  --c-accent: #D97757;
+  --c-accent-deep: #B85A3F;
+  --c-accent-wash: rgba(217, 119, 87, 0.10);
+  --c-accent-wash-hi: rgba(217, 119, 87, 0.18);
+  --c-up: #6B7C3A;
+  --c-up-wash: rgba(107, 124, 58, 0.10);
+  --c-down: #B8553B;
+  --c-down-wash: rgba(184, 85, 59, 0.10);
+  --c-info: #4A6B82;
+  --c-info-wash: rgba(74, 107, 130, 0.10);
+  --c-gold: #B8893A;
+  --c-grid: rgba(192, 188, 170, 0.18);
+  --c-r: 12px;
+  --c-r-sm: 8px;
+  --c-r-pill: 999px;
+  --c-sidebar-w: 240px;
+  --c-topbar-h: 64px;
+  --c-display: "Source Serif 4", "Tiempos", "Songti SC", "STSong", serif;
+  --c-body: "Inter", -apple-system, "PingFang SC", system-ui, sans-serif;
+  --c-hand: "Caveat", "Patrick Hand", "Kaiti SC", cursive;
+  --c-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"], :root:not([data-theme]) {
+    --c-paper: #1F1E1A;
+    --c-paper-card: #28261F;
+    --c-paper-soft: #2D2B24;
+    --c-ink: #EDE9DA;
+    --c-ink-soft: #B0AC9C;
+    --c-ink-faint: #807C6E;
+    --c-line: #38352D;
+    --c-line-strong: #4A463C;
+    --c-accent: #E78B6F;
+    --c-accent-deep: #C76A4F;
+    --c-accent-wash: rgba(231, 139, 111, 0.12);
+    --c-accent-wash-hi: rgba(231, 139, 111, 0.22);
+    --c-up: #9CAD68;
+    --c-up-wash: rgba(156, 173, 104, 0.12);
+    --c-down: #D17A60;
+    --c-down-wash: rgba(209, 122, 96, 0.12);
+    --c-info: #7DA0B8;
+    --c-info-wash: rgba(125, 160, 184, 0.12);
+    --c-gold: #D4A858;
+    --c-grid: rgba(74, 70, 60, 0.32);
+  }
+}
+:root[data-theme="dark"] {
+  --c-paper: #1F1E1A;
+  --c-paper-card: #28261F;
+  --c-paper-soft: #2D2B24;
+  --c-ink: #EDE9DA;
+  --c-ink-soft: #B0AC9C;
+  --c-ink-faint: #807C6E;
+  --c-line: #38352D;
+  --c-line-strong: #4A463C;
+  --c-accent: #E78B6F;
+  --c-accent-deep: #C76A4F;
+  --c-accent-wash: rgba(231, 139, 111, 0.12);
+  --c-accent-wash-hi: rgba(231, 139, 111, 0.22);
+  --c-up: #9CAD68;
+  --c-up-wash: rgba(156, 173, 104, 0.12);
+  --c-down: #D17A60;
+  --c-down-wash: rgba(209, 122, 96, 0.12);
+  --c-info: #7DA0B8;
+  --c-info-wash: rgba(125, 160, 184, 0.12);
+  --c-gold: #D4A858;
+  --c-grid: rgba(74, 70, 60, 0.32);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; min-height: 100%; }
+body {
+  background: var(--c-paper);
+  color: var(--c-ink);
+  font-family: var(--c-body);
+  font-size: 14.5px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  transition: background 300ms ease, color 300ms ease;
+  background-image:
+    linear-gradient(var(--c-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--c-grid) 1px, transparent 1px);
+  background-size: 32px 32px, 32px 32px;
+  background-attachment: fixed;
+}
+body::before {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 1;
+  background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.45 0'/></filter><rect width='200' height='200' filter='url(%23n)' opacity='0.45'/></svg>");
+  opacity: 0.15; mix-blend-mode: multiply;
+}
+:root[data-theme="dark"] body::before { mix-blend-mode: overlay; opacity: 0.30; }
+
+.num, .gq-num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; font-family: var(--c-mono); }
+
+@keyframes c-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes c-draw { from { stroke-dashoffset: var(--len, 200); } to { stroke-dashoffset: 0; } }
+@keyframes c-grow-in { from { opacity: 0; transform: scaleY(0); } to { opacity: 1; transform: scaleY(1); } }
+@keyframes c-pulse { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
+@keyframes c-float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-3px) rotate(2deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+@media (max-width: 768px) {
+  :root { --c-sidebar-w: 100%; --c-topbar-h: 56px; }
+  .gq-shell, .vs-shell, .c-shell {
+    grid-template-columns: 1fr !important;
+    grid-template-areas: "topbar" "main" !important;
+  }
+  .gq-sidebar, .c-sidebar { display: none; }
+  .gq-sidebar.is-open, .c-sidebar.is-open {
+    display: block; position: fixed; top: 56px; left: 0; right: 0; bottom: 0;
+    z-index: 200; background: var(--c-paper); padding: 16px;
+    overflow-y: auto;
+  }
+  .gq-kpi-grid, .c-kpi-grid { grid-template-columns: 1fr !important; }
+  .gq-row, .c-row { grid-template-columns: 1fr !important; }
+}
+
+.c-mobile-toggle {
+  display: none;
+  width: 36px; height: 36px; align-items: center; justify-content: center;
+  background: transparent; border: none; cursor: pointer; color: var(--c-ink);
+}
+.c-mobile-toggle svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+@media (max-width: 768px) { .c-mobile-toggle { display: inline-flex; } }
+
+
+/* =============================================================================
+   Legacy variable aliases
+   17 HTML 文件内嵌 <style> 用的旧 token 名（--accent / --bg-0 / --gq-mint 等）
+   映射到新 c-* token，让 inline style 不用改也能拿到 Claude 调性。
+   ============================================================================= */
+:root {
+  /* portal.css 旧 token */
+  --accent: var(--c-accent);
+  --accent-dark: var(--c-accent-deep);
+  --bg-0: var(--c-paper);
+  --bg-1: var(--c-paper-card);
+  --bg-2: var(--c-paper-soft);
+  --text: var(--c-ink);
+  --text-2: var(--c-ink-soft);
+  --text-3: var(--c-ink-faint);
+  --line: var(--c-line);
+  --line-2: var(--c-line-strong);
+  --link: var(--c-info);
+  --warn: #C76A3F;
+  --danger: var(--c-down);
+}
+
+
+  /* console.html inline 里还有 --bg/--surface-*/--card-2 等，已在上层 alias */
+}
